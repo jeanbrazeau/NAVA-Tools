@@ -4,13 +4,50 @@ One command line tool for the three things that need a computer: turning a build
 into something the bootloader accepts, pushing it over MIDI, and getting the
 patterns off the machine before doing either.
 
-```
-pip install -e tools          # or: pip install mido python-rtmidi
+## Install
+
+With [uv](https://docs.astral.sh/uv/), from anywhere — no clone needed:
+
+```bash
+uv tool install "git+https://github.com/jeanbrazeau/Nava-Firmware#subdirectory=tools[tui]"
 nava --help
 ```
 
-`nava hex2syx` and `nava inspect` work with no MIDI backend installed; the
-commands that touch a port need `mido` and `python-rtmidi`.
+That puts `nava` on your PATH in its own isolated environment. Drop `[tui]` if you
+only want the command line. To update or remove it:
+
+```bash
+uv tool upgrade nava-tools
+uv tool uninstall nava-tools
+```
+
+Run it once without installing anything:
+
+```bash
+uvx --from "git+https://github.com/jeanbrazeau/Nava-Firmware#subdirectory=tools[tui]" nava tui
+```
+
+From a clone, working on the tools themselves:
+
+```bash
+uv sync --project tools              # creates tools/.venv from uv.lock
+uv run --project tools nava tui
+uv run --project tools pytest
+```
+
+`uv sync` installs the `dev` dependency group automatically, so the tests are
+ready without naming an extra.
+
+With pip instead:
+
+```bash
+pip install -e "tools[tui]"
+pip install -e tools --group dev     # tests; needs pip >= 25.1
+```
+
+`nava hex2syx`, `nava inspect` and `nava show` work with no MIDI backend
+installed; the commands that touch a port need `mido` and `python-rtmidi`, and
+`nava tui` needs `textual` (the `tui` extra).
 
 ## Commands
 
@@ -29,7 +66,6 @@ commands that touch a port need `mido` and `python-rtmidi`.
 ## The TUI
 
 ```bash
-pip install -e "tools[tui]"
 nava tui                 # browses the current directory
 nava tui -d ~/nava-backups
 ```
@@ -163,8 +199,10 @@ rejected write leaves the old pattern intact rather than half-replaced.
 ## Tests
 
 ```bash
-pytest                      # from tools/
+uv run --project tools pytest
 ```
+
+Verified on CPython 3.10, 3.11 and 3.13.
 
 No hardware needed. `tests/fakenava.py` models the device, and the round-trip
 test backs up 145 items, wipes the model and restores it byte for byte.

@@ -6,22 +6,48 @@ build-backend = "setuptools.build_meta"
 name = "nava-tools"
 version = "1.0.0"
 description = "Build, flash and back up the Nava TR-909 replica over MIDI"
-requires-python = ">=3.9"
+readme = "README.md"
+license = "GPL-3.0-or-later"
+# PEP 604 unions (`X | None`) appear in runtime-evaluated positions, and every
+# module defers annotations, but 3.10 is the honest floor: only 3.13 is tested.
+requires-python = ">=3.10"
+keywords = ["midi", "sysex", "tr-909", "nava", "firmware", "drum-machine"]
 dependencies = [
     "mido>=1.3",
     "python-rtmidi>=1.5",
 ]
 
 [project.optional-dependencies]
+# The TUI is an extra so `hex2syx`, `inspect` and `show` stay installable
+# somewhere you would rather not pull in a terminal framework.
 tui = ["textual>=0.80"]
 build = ["platformio>=6.1"]
-dev = ["pytest>=7", "pytest-asyncio>=0.23", "textual>=0.80"]
+
+[project.urls]
+Homepage = "https://github.com/jeanbrazeau/Nava-Firmware"
+Source = "https://github.com/jeanbrazeau/Nava-Firmware/tree/master/tools"
 
 [project.scripts]
 nava = "nava.cli:main"
 
+[dependency-groups]
+# uv installs this automatically for `uv run` / `uv sync`; it is deliberately not
+# an extra, so nothing a user installs drags the test suite along.
+dev = [
+    "pytest>=7",
+    "pytest-asyncio>=0.23",
+    "textual>=0.80",
+]
+
 [tool.setuptools.packages.find]
 include = ["nava*"]
+
+# app.tcss is data, not a module, and setuptools does not pick it up from
+# `packages.find` alone. Without this the wheel installs a TUI that dies on
+# startup looking for its stylesheet - which an editable install never reveals,
+# because the file is still sitting in the source tree.
+[tool.setuptools.package-data]
+"nava.tui" = ["*.tcss"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
