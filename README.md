@@ -16,6 +16,7 @@ commands that touch a port need `mido` and `python-rtmidi`.
 
 | | |
 |---|---|
+| `nava tui` | interactive: browse backups, pick ports, dump, restore, flash |
 | `nava ports` | list MIDI inputs and outputs |
 | `nava build` | compile with PlatformIO and emit a `.syx` |
 | `nava hex2syx FILE.hex` | convert an existing `.hex` |
@@ -23,6 +24,58 @@ commands that touch a port need `mido` and `python-rtmidi`.
 | `nava backup` | read patterns, tracks and setup off the unit |
 | `nava restore FILE.syx` | write a backup back |
 | `nava inspect FILE.syx` | describe a file without a device attached |
+| `nava show FILE.syx A1` | print one decoded pattern, track or the config |
+
+## The TUI
+
+```bash
+pip install -e "tools[tui]"
+nava tui                 # browses the current directory
+nava tui -d ~/nava-backups
+```
+
+Four tabs, in the order the work usually happens.
+
+**Device** picks the MIDI in and out ports. They are remembered by name in
+`~/.config/nava/tui.json`, not by index — an index moves whenever a USB device is
+added or removed, and a remembered index would silently point at a different
+device.
+
+**Browse** lists the `.syx` files in a directory, what each one holds, and decodes
+whatever you select. Patterns render as a step grid:
+
+```
+backup-2026-07-29.syx  ›  C3
+
+len 16  scale 1/16  shuffle 2  flam 0
+
+        1 · · · 2 · · · 3 · · · 4 · · ·
+BD      # . . . # . . . # . . . # . . .
+SD      . . . . o . . . . . . . o . . .
+CH      o o o o o o o o o o o o o o o o
+
+ext MIDI  (16 steps)
+T1 C3   # . . . . . . . # . . . . . . .
+
+#  loud    o  soft    .  off    f  flam
+```
+
+Loud and soft are compared against each instrument's own two levels, not a global
+threshold — the 909's table is not uniform, and CH at 80 is soft while BD at 50 is
+loud. Ext lanes are labelled with note names when the backup carries a config
+record to read the note map from. An ext layer shorter than the pattern is shown
+repeating against the kit, which is what `extStepCount` does on the hardware.
+
+Tracks show their pattern sequence; the config record shows tempo, sync, channels,
+velocities and the ext note map.
+
+**Transfer** dumps and restores. **Firmware** flashes. Both name what they are
+about to overwrite and ask first — neither is reversible, and the unit gives no
+confirmation of its own. A firmware image and a backup are told apart by their
+SysEx header, so the TUI refuses to flash a backup or restore a firmware image.
+
+`esc` stops a transfer between items, never mid-item, so a cancel cannot leave a
+half-written record on the device.
 
 ### Finding the port
 
@@ -118,4 +171,8 @@ test backs up 145 items, wipes the model and restores it byte for byte.
 `test_bootloader.py` reproduces the released `Nava0tone_0.90b.syx` exactly, which
 is what pins the encoder to what the bootloader in flash actually decodes.
 `test_sysex_pack.py` compiles the firmware's own `sysex_pack.h` natively and
-checks it against the host packer in both directions.
+checks it against the host packer in both directions. `test_records.py` decodes
+hand-built byte images rather than round-tripping through an encoder — a decoder
+checked against its own inverse proves nothing about whether either matches
+`EEprom.ino`. `test_tui.py` drives the interface through Textual's test pilot,
+including the confirmation gates.

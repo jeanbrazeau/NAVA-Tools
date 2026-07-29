@@ -19,7 +19,7 @@ import sys
 import time
 from collections import Counter
 
-from . import bootloader, ihex, midiio, protocol, selection
+from . import bootloader, ihex, library, midiio, protocol, records, render, selection, transfer
 
 DEFAULT_ENV = "nava_sysex"
 DEFAULT_FLASH_DELAY_MS = 250.0
@@ -132,37 +132,28 @@ def cmd_flash(args) -> int:
 
     with midiio.open_ports(out_spec=args.out) as ports:
         started = time.monotonic()
-        midiio.send_stream(ports, messages, args.delay_ms, progress=_progress("page"))
+        transfer.flash(ports, messages, args.delay_ms, progress=_progress)
         print(f"\nSent in {time.monotonic() - started:.1f}s. The unit restarts on its own.")
     return 0
 
 
-def _progress(unit: str):
-    def report(done: int, total: int) -> None:
-        print(f"\r  {unit} {done}/{total}", end="", flush=True)
-
-    return report
+def _progress(done: int, total: int, label: str) -> None:
+    print(f"\r  {label}/{total}", end="", flush=True)
 
 
 # ----------------------------------------------------------------------------- backup
 
 
-def _selected_items(args) -> list[tuple[int, int, int]]:
-    """(request cmd, dump cmd, param) for everything the user asked for."""
-    items: list[tuple[int, int, int]] = []
+def _selected_items(args) -> list[transfer.Selection]:
+    """Everything the user asked for, as request/dump pairs."""
     want_all = args.all or not (args.patterns or args.tracks or args.config)
-
-    if want_all or args.patterns:
-        spec = args.patterns if args.patterns else "all"
-        for number in selection.parse_patterns(spec):
-            items.append((protocol.NAVA_PTRN_REQ, protocol.NAVA_PTRN_DMP, number))
-    if want_all or args.tracks:
-        spec = args.tracks if args.tracks else "all"
-        for number in selection.parse_tracks(spec):
-            items.append((protocol.NAVA_TRACK_REQ, protocol.NAVA_TRACK_DMP, number))
-    if want_all or args.config:
-        items.append((protocol.NAVA_CONFIG_REQ, protocol.NAVA_CONFIG_DMP, 0))
-    return items
+    patterns = selection.parse_patterns(
+        args.patterns if args.patterns else "all"
+    ) if (want_all or args.patterns) else []
+    tracks = selection.parse_tracks(
+        args.tracks if args.tracks else "all"
+    ) if (want_all or args.tracks) else []
+    return transfer.selections(patterns, tracks, config=want_all or args.config)
 
 
 def cmd_backup(args) -> int:
@@ -175,34 +166,23 @@ def cmd_backup(args) -> int:
         "The Nava must be stopped and on the SysEx config page "
         "(SHIFT+TEMPO to it) so it is listening for requests."
     )
-    collected = bytearray()
-    failures: list[str] = []
+
+    def report(done: int, total: int, label: str) -> None:
+        print(f"\r  {done}/{total}  {label}      ", end="", flush=True)
 
     with midiio.open_ports(out_spec=args.out, in_spec=args.input) as ports:
-        for index, (req_cmd, dump_cmd, param) in enumerate(items, start=1):
-            label = _item_label(dump_cmd, param)
-            print(f"\r  {index}/{len(items)}  {label}      ", end="", flush=True)
-            try:
-                message = midiio.request_dump(
-                    ports, req_cmd, param, args.timeout, args.retries
-                )
-            except midiio.MidiError as exc:
-                failures.append(f"{label}: {exc}")
-                continue
-            collected += protocol.encode(message.cmd, message.param, message.payload)
+        outcome = transfer.backup(ports, items, args.timeout, args.retries, progress=report)
     print()
 
-    # A partial backup is still written: 120 good patterns are worth keeping, and
-    # silently discarding them because one timed out would be the worse failure.
-    if collected:
+    if outcome.collected:
         with open(args.output, "wb") as handle:
-            handle.write(collected)
-        print(f"{args.output}: {len(protocol.split_messages(bytes(collected)))} items, "
-              f"{len(collected)} bytes")
+            handle.write(outcome.collected)
+        print(f"{args.output}: {len(protocol.split_messages(outcome.collected))} items, "
+              f"{len(outcome.collected)} bytes")
 
-    if failures:
-        print(f"\n{len(failures)} item(s) failed:", file=sys.stderr)
-        for failure in failures:
+    if outcome.failures:
+        print(f"\n{len(outcome.failures)} item(s) failed:", file=sys.stderr)
+        for failure in outcome.failures:
             print(f"  {failure}", file=sys.stderr)
         raise CommandError("backup is incomplete")
     return 0
@@ -254,17 +234,16 @@ def cmd_restore(args) -> int:
         "Do not power it off mid-write."
     )
 
+    def report(done: int, total: int, label: str) -> None:
+        print(f"\r  {done}/{total}  {label}      ", end="", flush=True)
+
     with midiio.open_ports(out_spec=args.out, in_spec=args.input) as ports:
-        for index, message in enumerate(dumps, start=1):
-            label = _item_label(message.cmd, message.param)
-            print(f"\r  {index}/{len(dumps)}  {label}      ", end="", flush=True)
-            raw = protocol.encode(message.cmd, message.param, message.payload)
-            try:
-                midiio.send_dump(ports, raw, args.timeout, args.retries)
-            except midiio.MidiError as exc:
-                print()
-                raise CommandError(f"{label}: {exc}") from exc
-    print("\nDone. Patterns load from EEPROM on the next bank change.")
+        outcome = transfer.restore(ports, dumps, args.timeout, args.retries, progress=report)
+    print()
+
+    if outcome.failures:
+        raise CommandError("; ".join(outcome.failures))
+    print("Done. Patterns load from EEPROM on the next bank change.")
     return 0
 
 
@@ -322,6 +301,66 @@ def cmd_inspect(args) -> int:
     if errors:
         raise CommandError(f"{errors} message(s) failed to decode")
     return 0
+
+
+def cmd_show(args) -> int:
+    """Print one decoded record from a backup, without a device attached."""
+    syx = library.load(args.file)
+    if syx.kind != library.KIND_BACKUP:
+        raise CommandError(f"{args.file} is a {syx.kind} file, not a backup")
+
+    wanted = args.item.strip().lower()
+    if wanted == "config":
+        item = next((i for i in syx.items if i.cmd == protocol.NAVA_CONFIG_DMP), None)
+        if item is None:
+            raise CommandError("this backup carries no config record")
+        print("\n".join(render.config_lines(item.decoded())))
+        return 0
+
+    if wanted.startswith("track"):
+        number = int(wanted.replace("track", "").strip() or 0) - 1
+        item = next(
+            (i for i in syx.items
+             if i.cmd == protocol.NAVA_TRACK_DMP and i.param == number), None
+        )
+        if item is None:
+            raise CommandError(f"this backup has no track {number + 1}")
+        print("\n".join(render.track_lines(item.decoded(), number)))
+        return 0
+
+    try:
+        number = protocol.parse_pattern_label(args.item)
+    except ValueError as exc:
+        raise CommandError(str(exc)) from exc
+    item = next(
+        (i for i in syx.items
+         if i.cmd == protocol.NAVA_PTRN_DMP and i.param == number), None
+    )
+    if item is None:
+        raise CommandError(
+            f"this backup has no pattern {protocol.pattern_label(number)}"
+        )
+
+    print(
+        render.pattern_text(
+            item.decoded(),
+            config=syx.config,
+            title=f"{syx.name}  ›  {protocol.pattern_label(number)}",
+        )
+    )
+    print()
+    print(render.legend())
+    return 0
+
+
+def cmd_tui(args) -> int:
+    try:
+        from .tui.app import run
+    except ImportError as exc:
+        raise CommandError(
+            f"the TUI needs textual: pip install textual\n  ({exc})"
+        ) from exc
+    return run(directory=args.directory)
 
 
 def _summarise(numbers: list[int]) -> str:
@@ -420,6 +459,15 @@ def build_parser() -> argparse.ArgumentParser:
     p_inspect.add_argument("file")
     add_page_words(p_inspect)
     p_inspect.set_defaults(func=cmd_inspect)
+
+    p_show = sub.add_parser("show", help="print a decoded pattern, track or config")
+    p_show.add_argument("file")
+    p_show.add_argument("item", help="a pattern (A1), a track (track 3) or 'config'")
+    p_show.set_defaults(func=cmd_show)
+
+    p_tui = sub.add_parser("tui", help="browse backups and drive the device interactively")
+    p_tui.add_argument("-d", "--directory", help="directory of .syx files to browse")
+    p_tui.set_defaults(func=cmd_tui)
 
     return parser
 
