@@ -14,7 +14,18 @@ nava --help
 ```
 
 That puts `nava` on your PATH in its own isolated environment. Drop `[tui]` if you
-only want the command line. To update or remove it:
+only want the command line.
+
+A bare URL resolves to the repository's **default branch**. To install from a
+branch or tag that has not been merged, name it — otherwise uv looks for
+`tools/pyproject.toml` on the default branch and reports "does not appear to be a
+Python project":
+
+```bash
+uv tool install "git+https://github.com/jeanbrazeau/Nava-Firmware@BRANCH#subdirectory=tools[tui]"
+```
+
+To update or remove it:
 
 ```bash
 uv tool upgrade nava-tools
