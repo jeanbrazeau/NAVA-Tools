@@ -40,9 +40,30 @@ def checkout_root(root: str | None = None) -> str | None:
     Keyed on platformio.ini rather than on `.git`: what a build needs is the
     project file, and a source archive without git history builds perfectly
     well.
+
+    With no argument this searches upward from the working directory before
+    falling back to the package's own location. Package-relative alone was
+    wrong for every installed copy: `uv tool install` puts nava under
+    site-packages, so standing inside a clone and running `nava build` or
+    `nava release` found nothing and said there was no firmware here - while
+    the user was looking straight at it.
     """
-    candidate = root or repo_root()
-    return candidate if os.path.exists(os.path.join(candidate, "platformio.ini")) else None
+    if root is not None:
+        return root if os.path.exists(os.path.join(root, "platformio.ini")) else None
+
+    current = os.path.abspath(os.getcwd())
+    while True:
+        if os.path.exists(os.path.join(current, "platformio.ini")):
+            return current
+        parent = os.path.dirname(current)
+        if parent == current:
+            break
+        current = parent
+
+    # An editable install or a `uv run` from the clone: the package itself is
+    # sitting in the tree, wherever the user happens to have cd'd to.
+    fallback = repo_root()
+    return fallback if os.path.exists(os.path.join(fallback, "platformio.ini")) else None
 
 
 def find_pio() -> str:
