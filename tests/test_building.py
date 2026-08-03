@@ -109,6 +109,26 @@ def test_missing_hex_is_not_reported_as_success(tmp_path, monkeypatch):
         building.build(root=str(tmp_path))
 
 
+def test_checkout_is_found_by_walking_up_from_the_cwd(tmp_path, monkeypatch):
+    """An installed nava lives under site-packages, so package-relative lookup
+    alone finds nothing however deep in a clone the user is standing."""
+    (tmp_path / "platformio.ini").write_text("[env:nava_sysex]\n")
+    deep = tmp_path / "downtown-solutions_firmware" / "src" / "SPI"
+    deep.mkdir(parents=True)
+    monkeypatch.chdir(deep)
+    assert building.checkout_root() == str(tmp_path.resolve())
+
+
+def test_cwd_outside_any_checkout_falls_back_to_the_package(tmp_path, monkeypatch):
+    """Run from somewhere unrelated, an installed copy still has to report no
+    checkout rather than picking up whatever is above the working directory."""
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    monkeypatch.chdir(elsewhere)
+    monkeypatch.setattr(building, "repo_root", lambda: str(tmp_path / "nowhere"))
+    assert building.checkout_root() is None
+
+
 def test_installed_copy_reports_no_checkout(tmp_path):
     """An installed nava sits under site-packages with no firmware anywhere near
     it. That has to be a clear message about downloading instead, not a
