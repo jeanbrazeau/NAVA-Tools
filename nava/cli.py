@@ -7,6 +7,7 @@
     nava backup                read patterns/tracks/config off the Nava
     nava restore FILE.syx      write a backup back to the Nava
     nava inspect FILE.syx      describe a .syx without a device attached
+    nava release 0.92          bump the firmware version, tag it and push
 """
 
 from __future__ import annotations
@@ -23,6 +24,7 @@ from . import (
     library,
     midiio,
     protocol,
+    publish,
     records,
     releases,
     render,
@@ -329,6 +331,28 @@ def cmd_show(args) -> int:
     return 0
 
 
+def cmd_release(args) -> int:
+    """Cut a release: bump the version, tag it, push. CI does the rest."""
+    root = building.checkout_root()
+    tag = publish.release(
+        args.version,
+        remote=args.remote,
+        branch=args.branch,
+        dry_run=args.dry_run,
+    )
+    if args.dry_run:
+        print("nothing was changed (--dry-run)")
+        return 0
+
+    slug = publish.remote_slug(root, args.remote) if root else None
+    if slug:
+        print(f"\nThe release workflow is building it now:")
+        print(f"  https://github.com/{slug}/actions")
+        print(f"  https://github.com/{slug}/releases/tag/{tag}")
+    print("`nava tui` can download it from the Firmware tab once the run finishes.")
+    return 0
+
+
 def cmd_tui(args) -> int:
     try:
         from .tui.app import run
@@ -441,6 +465,18 @@ def build_parser() -> argparse.ArgumentParser:
     p_show.add_argument("item", help="a pattern (A1), a track (track 3) or 'config'")
     p_show.set_defaults(func=cmd_show)
 
+    p_release = sub.add_parser(
+        "release", help="bump the firmware version, tag it and push; CI publishes"
+    )
+    p_release.add_argument("version", help="the new version, e.g. 0.92")
+    p_release.add_argument("--remote", default=publish.DEFAULT_REMOTE,
+                           help="git remote to push to (default: %(default)s)")
+    p_release.add_argument("--branch", default=publish.DEFAULT_BRANCH,
+                           help="branch the release is cut from (default: %(default)s)")
+    p_release.add_argument("--dry-run", action="store_true",
+                           help="show what would happen and change nothing")
+    p_release.set_defaults(func=cmd_release)
+
     p_tui = sub.add_parser("tui", help="browse backups and drive the device interactively")
     p_tui.add_argument("-d", "--directory", help="directory of .syx files to browse")
     p_tui.set_defaults(func=cmd_tui)
@@ -452,8 +488,8 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     try:
         return args.func(args)
-    except (CommandError, building.BuildError, releases.ReleaseError,
-            midiio.MidiError, protocol.ProtocolError) as exc:
+    except (CommandError, building.BuildError, publish.PublishError,
+            releases.ReleaseError, midiio.MidiError, protocol.ProtocolError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
     except FileNotFoundError as exc:

@@ -73,6 +73,7 @@ installed; the commands that touch a port need `mido` and `python-rtmidi`, and
 | `nava restore FILE.syx` | write a backup back |
 | `nava inspect FILE.syx` | describe a file without a device attached |
 | `nava show FILE.syx A1` | print one decoded pattern, track or the config |
+| `nava release 0.92` | bump the firmware version, tag it and push; CI publishes |
 
 ## The TUI
 
@@ -141,6 +142,37 @@ flash a backup or restore a firmware image.
 
 `esc` stops a transfer between items, never mid-item, so a cancel cannot leave a
 half-written record on the device.
+
+## Cutting a release
+
+```bash
+nava release 0.92 --dry-run     # says what it would do, changes nothing
+nava release 0.92
+```
+
+One command does the bookkeeping: it rewrites `FIRMWARE_VERSION` in
+`downtown-solutions_firmware/version.h`, commits that as `Release 0.92`, tags it
+and pushes the branch and the tag. Nothing is built or published locally —
+pushing the tag starts `.github/workflows/release.yml`, which builds with
+PlatformIO on a runner, attaches `nava-0.92.syx` to a new GitHub release, and
+writes the flashing instructions into the notes. The TUI's Download button picks
+it up as `latest` a minute later.
+
+The version lives in exactly one place because the number on the release and the
+number on the panel have to agree — the splash is the only version a person in
+front of the machine can read. The workflow refuses to publish a tag that
+disagrees with `version.h`, and `version.h` itself will not compile if the
+version is too long for the 16-column splash line.
+
+It refuses rather than improvises, because a tag other people flash from cannot
+be re-cut:
+
+- uncommitted changes in the tree — the tag would name a commit that does not
+  contain your work, and the build comes from the commit
+- a branch other than `master`, unless you pass `--branch`
+- a tag that already exists locally or on the remote
+- a version that is not `<digits>.<digits>` with an optional trailing letter, or
+  is too long for the display
 
 ### Finding the port
 
