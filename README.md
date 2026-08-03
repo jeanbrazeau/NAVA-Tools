@@ -64,7 +64,7 @@ installed; the commands that touch a port need `mido` and `python-rtmidi`, and
 
 | | |
 |---|---|
-| `nava tui` | interactive: browse backups, pick ports, dump, restore, flash |
+| `nava tui` | interactive: browse backups, pick ports, dump, restore, download or build firmware, flash |
 | `nava ports` | list MIDI inputs and outputs |
 | `nava build` | compile with PlatformIO and emit a `.syx` |
 | `nava hex2syx FILE.hex` | convert an existing `.hex` |
@@ -116,10 +116,28 @@ repeating against the kit, which is what `extStepCount` does on the hardware.
 Tracks show their pattern sequence; the config record shows tempo, sync, channels,
 velocities and the ext note map.
 
-**Transfer** dumps and restores. **Firmware** flashes. Both name what they are
-about to overwrite and ask first — neither is reversible, and the unit gives no
-confirmation of its own. A firmware image and a backup are told apart by their
-SysEx header, so the TUI refuses to flash a backup or restore a firmware image.
+**Transfer** dumps and restores.
+
+**Firmware** gets an image and sends it. Two ways to get one, because most
+installs can only use the first:
+
+- **Download** fetches a published build from the
+  [releases page](https://github.com/jeanbrazeau/Nava-Firmware/releases). The tag
+  box takes `latest` or a specific tag such as `0.91b`. The file lands in the
+  browse directory named for the release — `nava-0.91b.syx` — so two releases
+  cannot overwrite each other, and it shows up under Browse afterwards.
+- **Build** compiles the checkout with PlatformIO and converts the result. This
+  needs `platformio.ini` next to the package, so it only works when `nava` is run
+  from a clone; an installed copy says so instead of offering it. PlatformIO's
+  output is streamed into the log as it compiles.
+
+Either one fills in the file box, so the flow is Download (or Build) → Inspect →
+Flash without typing a path.
+
+Transfer and Firmware both name what they are about to overwrite and ask first —
+neither is reversible, and the unit gives no confirmation of its own. A firmware
+image and a backup are told apart by their SysEx header, so the TUI refuses to
+flash a backup or restore a firmware image.
 
 `esc` stops a transfer between items, never mid-item, so a cancel cannot leave a
 half-written record on the device.

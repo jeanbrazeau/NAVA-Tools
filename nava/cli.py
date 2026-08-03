@@ -13,13 +13,22 @@ from __future__ import annotations
 
 import argparse
 import os
-import shutil
-import subprocess
 import sys
 import time
 from collections import Counter
 
-from . import bootloader, ihex, library, midiio, protocol, records, render, selection, transfer
+from . import (
+    bootloader,
+    building,
+    library,
+    midiio,
+    protocol,
+    records,
+    releases,
+    render,
+    selection,
+    transfer,
+)
 
 DEFAULT_ENV = "nava_sysex"
 DEFAULT_FLASH_DELAY_MS = 250.0
@@ -31,8 +40,10 @@ class CommandError(Exception):
     """A user-facing failure; reported without a traceback."""
 
 
-def repo_root() -> str:
-    return os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# Build support lives in building.py, shared with the TUI. Re-exported because
+# both names were part of this module's surface before the split.
+repo_root = building.repo_root
+find_pio = building.find_pio
 
 
 # ----------------------------------------------------------------------------- ports
@@ -50,61 +61,26 @@ def cmd_ports(args) -> int:
 # ----------------------------------------------------------------------------- build
 
 
-def find_pio() -> str:
-    found = shutil.which("pio") or shutil.which("platformio")
-    if found:
-        return found
-    fallback = os.path.expanduser("~/.platformio/penv/bin/pio")
-    if os.path.exists(fallback):
-        return fallback
-    raise CommandError(
-        "PlatformIO not found. Install it with:\n"
-        "    pip install platformio\n"
-        "or pass an already-built .hex to `nava hex2syx`."
-    )
-
-
 def cmd_build(args) -> int:
-    root = repo_root()
-    pio = find_pio()
-    print(f"Building {args.env} with {pio}")
-    result = subprocess.run([pio, "run", "-e", args.env], cwd=root)
-    if result.returncode != 0:
-        raise CommandError(
-            f"PlatformIO build failed (exit {result.returncode}).\n"
-            "On Apple Silicon a 'Bad CPU type in executable' error means the AVR "
-            "toolchain needs Rosetta:\n"
-            "    softwareupdate --install-rosetta --agree-to-license"
-        )
-
-    hex_path = os.path.join(root, ".pio", "build", args.env, "firmware.hex")
-    if not os.path.exists(hex_path):
-        raise CommandError(f"build reported success but {hex_path} is missing")
-    syx_path = args.output or hex_path[: -len(".hex")] + ".syx"
-    _convert(hex_path, syx_path, args.page_words)
+    print(f"Building {args.env}")
+    built = building.build(args.env, args.output, args.page_words, on_line=print)
+    _report(built)
     return 0
 
 
 def cmd_hex2syx(args) -> int:
-    _convert(args.hexfile, args.output or args.hexfile[: -len(".hex")] + ".syx", args.page_words)
+    _report(building.convert(
+        args.hexfile,
+        args.output or args.hexfile[: -len(".hex")] + ".syx",
+        args.page_words,
+    ))
     return 0
 
 
-def _convert(hex_path: str, syx_path: str, page_words: int) -> None:
-    try:
-        image = ihex.load_file(hex_path)
-    except OSError as exc:
-        raise CommandError(f"cannot read {hex_path}: {exc}") from exc
-    except ihex.HexFileError as exc:
-        raise CommandError(f"{hex_path}: {exc}") from exc
-
-    stream = bootloader.encode_firmware(image, page_words)
-    pages = len(image + b"\x00" * (-len(image) % (page_words * 2))) // (page_words * 2)
-    with open(syx_path, "wb") as handle:
-        handle.write(stream)
+def _report(built: building.Built) -> None:
     print(
-        f"{syx_path}: {len(image)} bytes of flash in {pages} pages, "
-        f"{len(stream)} bytes of SysEx"
+        f"{built.syx_path}: {built.flash_bytes} bytes of flash in {built.pages} "
+        f"pages, {built.syx_bytes} bytes of SysEx"
     )
 
 
@@ -476,7 +452,8 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     try:
         return args.func(args)
-    except (CommandError, midiio.MidiError, protocol.ProtocolError) as exc:
+    except (CommandError, building.BuildError, releases.ReleaseError,
+            midiio.MidiError, protocol.ProtocolError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
     except FileNotFoundError as exc:

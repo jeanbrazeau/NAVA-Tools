@@ -253,3 +253,210 @@ async def test_settings_are_not_written_to_the_real_config(library_dir, monkeypa
         settings_store.save(app.settings)
         assert str(library_dir / "config") in settings_store.settings_path()
         assert os.path.exists(settings_store.settings_path())
+
+
+# --------------------------------------------------------------- firmware sources
+
+
+async def test_download_fetches_a_release_and_arms_the_flash_row(library_dir, monkeypatch):
+    """The whole point of the button: after it, Flash has something to send.
+
+    The network is stubbed - what is under test is that the release the TUI
+    asked for is the one written to disk, that it lands in the library
+    directory under the release's own name, and that the file input ends up
+    pointing at it."""
+    from nava import releases
+    from nava.tui import app as app_module
+
+    asked: list[str] = []
+    body = bootloader.encode_firmware(b"\x0a\x0b\x0c")
+
+    def fake_fetch(tag=None, repo=releases.DEFAULT_REPO):
+        asked.append(tag)
+        return releases.Release(
+            tag="0.91b", name="Nava 0.91b", prerelease=False, published="2026-07-28",
+            assets=[releases.Asset("nava-0.91b.syx", "https://api/assets/2", len(body))],
+        )
+
+    def fake_download(asset, dest, progress=None):
+        with open(dest, "wb") as handle:
+            handle.write(body)
+        if progress:
+            progress(len(body), len(body), asset.name)
+        return dest
+
+    monkeypatch.setattr(app_module.releases, "fetch", fake_fetch)
+    monkeypatch.setattr(app_module.releases, "download", fake_download)
+
+    app = NavaApp(directory=str(library_dir))
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        await show_tab(app, pilot, "tab-firmware")
+        await pilot.click("#do-download")
+        await app.workers.wait_for_complete()
+        await pilot.pause()
+
+        assert asked == ["latest"]
+        expected = str(library_dir / "nava-0.91b.syx")
+        assert (library_dir / "nava-0.91b.syx").read_bytes() == body
+        assert app.query_one("#firmware-file", Input).value == expected
+        assert "Downloaded 0.91b" in log_text(app, "#firmware-log")
+
+
+async def test_download_honours_a_named_tag(library_dir, monkeypatch):
+    from nava import releases
+    from nava.tui import app as app_module
+
+    asked: list[str] = []
+
+    def fake_fetch(tag=None, repo=releases.DEFAULT_REPO):
+        asked.append(tag)
+        raise releases.ReleaseError("not found: releases/tags/0.90b")
+
+    monkeypatch.setattr(app_module.releases, "fetch", fake_fetch)
+
+    app = NavaApp(directory=str(library_dir))
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        await show_tab(app, pilot, "tab-firmware")
+        app.query_one("#release-tag", Input).value = "0.90b"
+        await pilot.click("#do-download")
+        await app.workers.wait_for_complete()
+        await pilot.pause()
+
+        assert asked == ["0.90b"]
+        assert "not found" in log_text(app, "#firmware-log")
+
+
+async def test_release_without_firmware_does_not_arm_the_flash_row(library_dir, monkeypatch):
+    """A release carrying only notes must leave the file input alone rather
+    than pointing it at something that is not an image."""
+    from nava import releases
+    from nava.tui import app as app_module
+
+    monkeypatch.setattr(
+        app_module.releases, "fetch",
+        lambda tag=None, repo=None: releases.Release(
+            tag="0.91b", name="n", prerelease=False, published="", 
+            assets=[releases.Asset("notes.txt", "u", 3)],
+        ),
+    )
+    app = NavaApp(directory=str(library_dir))
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        await show_tab(app, pilot, "tab-firmware")
+        app.query_one("#firmware-file", Input).value = ""
+        await pilot.click("#do-download")
+        await app.workers.wait_for_complete()
+        await pilot.pause()
+
+        assert app.query_one("#firmware-file", Input).value == ""
+        assert "no .syx" in log_text(app, "#firmware-log")
+
+
+async def test_build_arms_the_flash_row_with_what_it_compiled(library_dir, monkeypatch):
+    from nava.tui import app as app_module
+
+    syx = library_dir / "compiled.syx"
+    syx.write_bytes(bootloader.encode_firmware(b"\x01\x02"))
+
+    monkeypatch.setattr(
+        app_module.building, "checkout_root", lambda root=None: str(library_dir)
+    )
+    monkeypatch.setattr(
+        app_module.building, "build",
+        lambda **kw: app_module.building.Built(str(syx), "x.hex", 2, 1, len(syx.read_bytes())),
+    )
+
+    app = NavaApp(directory=str(library_dir))
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        await show_tab(app, pilot, "tab-firmware")
+        await pilot.click("#do-build")
+        await app.workers.wait_for_complete()
+        await pilot.pause()
+
+        assert app.query_one("#firmware-file", Input).value == str(syx)
+        assert "Built 2 bytes" in log_text(app, "#firmware-log")
+
+
+async def test_build_is_refused_when_there_is_no_checkout(library_dir, monkeypatch):
+    """An installed nava has no firmware source. Saying so beats running
+    PlatformIO in site-packages and reporting whatever it makes of that."""
+    from nava.tui import app as app_module
+
+    monkeypatch.setattr(app_module.building, "checkout_root", lambda root=None: None)
+    called: list[int] = []
+    monkeypatch.setattr(
+        app_module.building, "build", lambda **kw: called.append(1)
+    )
+
+    app = NavaApp(directory=str(library_dir))
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        await show_tab(app, pilot, "tab-firmware")
+        await pilot.click("#do-build")
+        await pilot.pause()
+
+        assert not called
+        assert "Nothing to build here" in log_text(app, "#firmware-log")
+        assert "Build is unavailable" in str(
+            app.query_one("#source-hint", Static).content
+        )
+
+
+async def test_build_failure_is_reported_not_raised(library_dir, monkeypatch):
+    from nava.tui import app as app_module
+
+    def boom(**kw):
+        raise app_module.building.BuildError("PlatformIO build failed (exit 1).")
+
+    monkeypatch.setattr(
+        app_module.building, "checkout_root", lambda root=None: str(library_dir)
+    )
+    monkeypatch.setattr(app_module.building, "build", boom)
+
+    app = NavaApp(directory=str(library_dir))
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        await show_tab(app, pilot, "tab-firmware")
+        await pilot.click("#do-build")
+        await app.workers.wait_for_complete()
+        await pilot.pause()
+
+        assert "PlatformIO build failed" in log_text(app, "#firmware-log")
+
+
+async def test_downloaded_image_can_then_be_inspected(library_dir, monkeypatch):
+    """Download -> Inspect -> Flash is the path a user without a clone takes;
+    the middle step must recognise what the first one wrote."""
+    from nava import releases
+    from nava.tui import app as app_module
+
+    body = bootloader.encode_firmware(bytes(300))
+    monkeypatch.setattr(
+        app_module.releases, "fetch",
+        lambda tag=None, repo=None: releases.Release(
+            tag="0.91b", name="n", prerelease=False, published="",
+            assets=[releases.Asset("nava-0.91b.syx", "u", len(body))],
+        ),
+    )
+
+    def fake_download(asset, dest, progress=None):
+        with open(dest, "wb") as handle:
+            handle.write(body)
+        return dest
+
+    monkeypatch.setattr(app_module.releases, "download", fake_download)
+
+    app = NavaApp(directory=str(library_dir))
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        await show_tab(app, pilot, "tab-firmware")
+        await pilot.click("#do-download")
+        await app.workers.wait_for_complete()
+        await pilot.pause()
+        await pilot.click("#do-inspect")
+        await pilot.pause()
+
+        assert "bytes of flash in" in log_text(app, "#firmware-log")

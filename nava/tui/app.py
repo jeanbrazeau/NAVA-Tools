@@ -38,7 +38,18 @@ from textual.widgets import (
 )
 from textual.worker import get_current_worker
 
-from .. import bootloader, library, midiio, protocol, records, render, selection, transfer
+from .. import (
+    bootloader,
+    building,
+    library,
+    midiio,
+    protocol,
+    records,
+    releases,
+    render,
+    selection,
+    transfer,
+)
 from . import settings as settings_store
 
 DEFAULT_TIMEOUT = 3.0
@@ -151,6 +162,17 @@ class NavaApp(App):
                 yield RichLog(id="transfer-log", markup=True, wrap=True)
 
             with TabPane("Firmware", id="tab-firmware"):
+                with Vertical(classes="panel"):
+                    yield Label("Get an image", classes="panel-title")
+                    with Horizontal(classes="action-row"):
+                        yield Input(
+                            value="latest",
+                            placeholder="release tag, or latest",
+                            id="release-tag",
+                        )
+                        yield Button("Download", variant="primary", id="do-download")
+                        yield Button("Build", id="do-build")
+                    yield Static(self._source_hint(), id="source-hint", classes="muted")
                 with Vertical(classes="panel"):
                     yield Label("Flash firmware", classes="panel-title")
                     with Horizontal(classes="action-row"):
@@ -507,6 +529,116 @@ class NavaApp(App):
         )
 
     # -------------------------------------------------------------- firmware
+
+    def _source_hint(self) -> str:
+        """Say up front which of the two sources this install can actually use.
+
+        Building needs a checkout next to the package; `uv tool install` puts it
+        under site-packages, where there is no firmware and never will be.
+        Discovering that by pressing Build and reading an error is a worse way
+        to learn it than being told before pressing anything.
+        """
+        if building.checkout_root() is None:
+            return (
+                "Download fetches a published build from the releases page. "
+                "Build is unavailable here — this nava is installed, not run "
+                "from a clone, so there is no firmware source to compile."
+            )
+        return (
+            "Download fetches a published build from the releases page; Build "
+            "compiles this checkout with PlatformIO. Either one fills in the "
+            "file below."
+        )
+
+    def _use_firmware(self, path: str, note: str) -> None:
+        """Point the flash row at an image one of the sources just produced."""
+        self.query_one("#firmware-file", Input).value = path
+        self.settings["firmware"] = path
+        settings_store.save(self.settings)
+        self._write("#firmware-log", note)
+        self.refresh_files()
+
+    # -------------------------------------------------------------- download
+
+    @on(Button.Pressed, "#do-download")
+    def _download_pressed(self) -> None:
+        tag = self.query_one("#release-tag", Input).value.strip() or "latest"
+        self._write("#firmware-log", f"[b]Fetching release {tag}[/b]")
+        self._run_download(tag)
+
+    # Its own group: a download is not a MIDI operation, and cancelling it must
+    # not cancel a flash that is already sending pages to the device.
+    @work(thread=True, exclusive=True, group="net")
+    def _run_download(self, tag: str) -> None:
+        try:
+            release = releases.fetch(tag)
+        except releases.ReleaseError as exc:
+            self.call_from_thread(self._write, "#firmware-log", f"[red]{exc}[/red]")
+            return
+
+        asset = release.firmware
+        if asset is None:
+            names = ", ".join(a.name for a in release.assets) or "no files"
+            self.call_from_thread(
+                self._write, "#firmware-log",
+                f"[red]Release {release.tag} carries no .syx to flash ({names}).[/red]",
+            )
+            return
+
+        # Named for the release, not for the asset: two releases both publishing
+        # firmware.syx would otherwise overwrite each other in the library, and
+        # which build a file holds is exactly what you want to know later.
+        dest = os.path.join(self.settings["directory"], f"nava-{release.tag}.syx")
+        self.call_from_thread(
+            self._write, "#firmware-log",
+            f"{release.label}  ·  {asset.name}  ·  {asset.size} bytes  →  {dest}",
+        )
+        try:
+            releases.download(
+                asset, dest,
+                progress=self._progress("#firmware-progress", "#firmware-log"),
+            )
+        except releases.ReleaseError as exc:
+            self.call_from_thread(self._write, "#firmware-log", f"[red]{exc}[/red]")
+            return
+
+        self.call_from_thread(
+            self._use_firmware, dest, f"[green]Downloaded {release.tag}.[/green]"
+        )
+
+    # ----------------------------------------------------------------- build
+
+    @on(Button.Pressed, "#do-build")
+    def _build_pressed(self) -> None:
+        if building.checkout_root() is None:
+            self._write(
+                "#firmware-log",
+                "[red]Nothing to build here — no platformio.ini beside this "
+                "install. Use Download, or run nava from a clone.[/red]",
+            )
+            return
+        self._write("#firmware-log", "[b]Compiling — this takes a while when cold[/b]")
+        self._run_build()
+
+    @work(thread=True, exclusive=True, group="build")
+    def _run_build(self) -> None:
+        def line(text: str) -> None:
+            # PlatformIO's progress bars and blank spacing are noise in a log
+            # that is also carrying flash progress; the milestones are enough.
+            if text.strip():
+                self.call_from_thread(self._write, "#firmware-log", f"  {text}")
+
+        try:
+            built = building.build(on_line=line)
+        except building.BuildError as exc:
+            self.call_from_thread(self._write, "#firmware-log", f"[red]{exc}[/red]")
+            return
+
+        self.call_from_thread(
+            self._use_firmware, built.syx_path,
+            f"[green]Built {built.flash_bytes} bytes of flash in "
+            f"{built.pages} pages.[/green]",
+        )
 
     @on(Button.Pressed, "#do-inspect")
     def _inspect_firmware(self) -> None:
