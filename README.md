@@ -193,7 +193,8 @@ nava flash .pio/build/nava_sysex/firmware.syx --out NAVA-909
 ```
 
 Put the unit in bootloader mode first: stop the sequencer, **SHIFT + TEMPO** to
-the `BOOTLOADER` page, press the encoder. The panel does not react afterwards —
+the `BOOTLOADER` page, then **SHIFT + encoder**. It saves everything to EEPROM and
+silences the transport before jumping. The panel does not react afterwards —
 it is no longer running the firmware — and the unit restarts on its own when the
 transfer finishes.
 
