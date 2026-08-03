@@ -86,13 +86,41 @@ def test_dry_run_changes_nothing(checkout):
     assert any("would git tag" in line for line in lines)
 
 
-def test_dirty_tree_is_refused(checkout):
+def test_modified_tracked_file_is_refused(checkout):
     """The tag would name a commit that does not contain the work in front of
     you, and the build would come from the commit, not the tree."""
-    (checkout / "downtown-solutions_firmware" / "Seq.ino").write_text("// wip\n")
+    versions = checkout / "downtown-solutions_firmware" / "version.h"
+    versions.write_text(versions.read_text() + "// wip\n")
     with pytest.raises(publish.PublishError, match="uncommitted changes"):
         publish.release("0.92", root=str(checkout), on_line=lambda _: None)
     assert publish.read_version(str(checkout)) == "0.91b"
+
+
+def test_untracked_files_do_not_block_a_release(checkout):
+    """They cannot reach the tag or the build, and this repository always has
+    some - .claude/ holds the worktrees. Blocking on them also invites
+    `git stash -u` as the workaround, which would delete those worktrees."""
+    (checkout / ".claude").mkdir()
+    (checkout / ".claude" / "worktrees").mkdir()
+    (checkout / "scratch.txt").write_text("notes\n")
+
+    lines: list[str] = []
+    publish.release("0.92", root=str(checkout), on_line=lines.append)
+
+    assert git(checkout, "tag", "--list") == "0.92"
+    note = next(line for line in lines if line.startswith("note:"))
+    assert "untracked" in note and "scratch.txt" in note
+    # Still there afterwards: a release must not tidy the working tree.
+    assert (checkout / ".claude" / "worktrees").exists()
+
+
+def test_many_untracked_files_are_summarised(checkout):
+    for i in range(6):
+        (checkout / f"file{i}.txt").write_text("x")
+    lines: list[str] = []
+    publish.release("0.92", root=str(checkout), dry_run=True, on_line=lines.append)
+    note = next(line for line in lines if line.startswith("note:"))
+    assert "and 3 more" in note
 
 
 def test_wrong_branch_is_refused(checkout):

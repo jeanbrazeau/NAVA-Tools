@@ -167,8 +167,10 @@ version is too long for the 16-column splash line.
 It refuses rather than improvises, because a tag other people flash from cannot
 be re-cut:
 
-- uncommitted changes in the tree — the tag would name a commit that does not
-  contain your work, and the build comes from the commit
+- uncommitted changes to tracked files — the tag would name a commit that does
+  not contain your work, and the build comes from the commit. Untracked files do
+  not block anything, since they cannot reach the tag or the build; they are
+  listed so a source file that was never `git add`ed is not silently left out
 - a branch other than `master`, unless you pass `--branch`
 - a tag that already exists locally or on the remote
 - a version that is not `<digits>.<digits>` with an optional trailing letter, or

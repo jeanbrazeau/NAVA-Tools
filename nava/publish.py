@@ -95,13 +95,33 @@ def check_version(version: str) -> None:
         )
 
 
-def check_clean(root: str) -> None:
-    if git(["status", "--porcelain"], root):
+def check_clean(root: str, on_line: Callable[[str], None] = print) -> None:
+    """Refuse on modified tracked files; only mention untracked ones.
+
+    Untracked files cannot end up in the tag or in the build, so blocking on
+    them stops releases for reasons that do not affect the artifact - and the
+    repository always has some, since `.claude/` holds worktrees. Blocking on
+    them also invites `git stash -u` as the fix, which would sweep those
+    worktrees away.
+
+    They are still worth naming: an untracked file is how a new source file
+    that was never `git add`ed goes missing from a release.
+    """
+    if git(["status", "--porcelain", "--untracked-files=no"], root):
         raise PublishError(
-            "the working tree has uncommitted changes.\n"
+            "the working tree has uncommitted changes to tracked files.\n"
             "A release tags what is committed; commit or stash first so the tag "
             "and the build agree."
         )
+    untracked = [
+        line[3:] for line in git(["status", "--porcelain"], root).splitlines()
+        if line.startswith("?? ")
+    ]
+    if untracked:
+        shown = ", ".join(untracked[:3])
+        if len(untracked) > 3:
+            shown += f", and {len(untracked) - 3} more"
+        on_line(f"note: not in this release, untracked: {shown}")
 
 
 def check_branch(root: str, branch: str) -> None:
@@ -157,7 +177,7 @@ def release(
             "different number."
         )
 
-    check_clean(checkout)
+    check_clean(checkout, on_line)
     check_branch(checkout, branch)
     check_tag_free(checkout, remote, version)
 
