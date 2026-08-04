@@ -26,6 +26,14 @@ jobs:
         with:
           enable-cache: true
 
+      # python-rtmidi ships manylinux wheels only for the interpreters that
+      # existed when it was released, so the newest one in the matrix builds it
+      # from source - and that build needs a MIDI backend's headers. Without
+      # this the job fails on a meson error about ALSA, several screens deep,
+      # which reads as nothing to do with this package at all.
+      - name: MIDI backend headers
+        run: sudo apt-get update && sudo apt-get install -y libasound2-dev
+
       # --locked rather than a plain sync: uv.lock is committed so the
       # environment is reproducible, and a lockfile that no longer satisfies
       # pyproject.toml should fail here rather than be silently updated.
