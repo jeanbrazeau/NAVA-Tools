@@ -9,7 +9,7 @@ patterns off the machine before doing either.
 With [uv](https://docs.astral.sh/uv/), from anywhere — no clone needed:
 
 ```bash
-uv tool install "git+https://github.com/jeanbrazeau/Nava-Firmware#subdirectory=tools[tui]"
+uv tool install "git+https://github.com/jeanbrazeau/nava-tools[tui]"
 nava --help
 ```
 
@@ -17,12 +17,10 @@ That puts `nava` on your PATH in its own isolated environment. Drop `[tui]` if y
 only want the command line.
 
 A bare URL resolves to the repository's **default branch**. To install from a
-branch or tag that has not been merged, name it — otherwise uv looks for
-`tools/pyproject.toml` on the default branch and reports "does not appear to be a
-Python project":
+branch or tag that has not been merged, name it:
 
 ```bash
-uv tool install "git+https://github.com/jeanbrazeau/Nava-Firmware@BRANCH#subdirectory=tools[tui]"
+uv tool install "git+https://github.com/jeanbrazeau/nava-tools@BRANCH[tui]"
 ```
 
 To update or remove it:
@@ -35,15 +33,15 @@ uv tool uninstall nava-tools
 Run it once without installing anything:
 
 ```bash
-uvx --from "git+https://github.com/jeanbrazeau/Nava-Firmware#subdirectory=tools[tui]" nava tui
+uvx --from "git+https://github.com/jeanbrazeau/nava-tools[tui]" nava tui
 ```
 
 From a clone, working on the tools themselves:
 
 ```bash
-uv sync --project tools              # creates tools/.venv from uv.lock
-uv run --project tools nava tui
-uv run --project tools pytest
+uv sync                              # creates .venv from uv.lock
+uv run nava tui
+uv run pytest
 ```
 
 `uv sync` installs the `dev` dependency group automatically, so the tests are
@@ -52,8 +50,8 @@ ready without naming an extra.
 With pip instead:
 
 ```bash
-pip install -e "tools[tui]"
-pip install -e tools --group dev     # tests; needs pip >= 25.1
+pip install -e ".[tui]"
+pip install -e . --group dev         # tests; needs pip >= 25.1
 ```
 
 `nava hex2syx`, `nava inspect` and `nava show` work with no MIDI backend
@@ -73,7 +71,6 @@ installed; the commands that touch a port need `mido` and `python-rtmidi`, and
 | `nava restore FILE.syx` | write a backup back |
 | `nava inspect FILE.syx` | describe a file without a device attached |
 | `nava show FILE.syx A1` | print one decoded pattern, track or the config |
-| `nava release 0.92` | bump the firmware version, tag it and push; CI publishes |
 
 ## The TUI
 
@@ -145,38 +142,19 @@ flash a backup or restore a firmware image.
 `esc` stops a transfer between items, never mid-item, so a cancel cannot leave a
 half-written record on the device.
 
-## Cutting a release
+## Where the firmware lives
 
-```bash
-nava release 0.92 --dry-run     # says what it would do, changes nothing
-nava release 0.92
-```
+This repository is the host side only. The firmware itself, its simulator tests
+and its release machinery are in
+[jeanbrazeau/Nava-Firmware](https://github.com/jeanbrazeau/Nava-Firmware): the
+version number lives in one file there (`downtown-solutions_firmware/version.h`),
+`scripts/release.py` in that repository cuts a tag from it, and that repository's
+CI builds the `.syx` this tool downloads and flashes.
 
-One command does the bookkeeping: it rewrites `FIRMWARE_VERSION` in
-`downtown-solutions_firmware/version.h`, commits that as `Release 0.92`, tags it
-and pushes the branch and the tag. Nothing is built or published locally —
-pushing the tag starts `.github/workflows/release.yml`, which builds with
-PlatformIO on a runner, attaches `nava-0.92.syx` to a new GitHub release, and
-writes the flashing instructions into the notes. The TUI's Download button picks
-it up as `latest` a minute later.
-
-The version lives in exactly one place because the number on the release and the
-number on the panel have to agree — the splash is the only version a person in
-front of the machine can read. The workflow refuses to publish a tag that
-disagrees with `version.h`, and `version.h` itself will not compile if the
-version is too long for the 16-column splash line.
-
-It refuses rather than improvises, because a tag other people flash from cannot
-be re-cut:
-
-- uncommitted changes to tracked files — the tag would name a commit that does
-  not contain your work, and the build comes from the commit. Untracked files do
-  not block anything, since they cannot reach the tag or the build; they are
-  listed so a source file that was never `git add`ed is not silently left out
-- a branch other than `master`, unless you pass `--branch`
-- a tag that already exists locally or on the remote
-- a version that is not `<digits>.<digits>` with an optional trailing letter, or
-  is too long for the display
+Two commands here still want a firmware checkout, and say so rather than failing
+obscurely when there is none: `nava build` shells out to PlatformIO against a
+`platformio.ini`, and the TUI's Build button is offered only when it finds one.
+Everything else — flash, backup, restore, inspect, show — needs no source at all.
 
 ### Finding the port
 
@@ -265,7 +243,7 @@ rejected write leaves the old pattern intact rather than half-replaced.
 ## Tests
 
 ```bash
-uv run --project tools pytest
+uv run pytest
 ```
 
 Verified on CPython 3.10, 3.11 and 3.13.
@@ -274,9 +252,13 @@ No hardware needed. `tests/fakenava.py` models the device, and the round-trip
 test backs up 145 items, wipes the model and restores it byte for byte.
 `test_bootloader.py` reproduces the released `Nava0tone_0.90b.syx` exactly, which
 is what pins the encoder to what the bootloader in flash actually decodes.
-`test_sysex_pack.py` compiles the firmware's own `sysex_pack.h` natively and
-checks it against the host packer in both directions. `test_records.py` decodes
+`test_records.py` decodes
 hand-built byte images rather than round-tripping through an encoder — a decoder
 checked against its own inverse proves nothing about whether either matches
 `EEprom.ino`. `test_tui.py` drives the interface through Textual's test pilot,
 including the confirmation gates.
+
+What is NOT tested here is that `protocol.py` still agrees with the firmware —
+that check needs the firmware headers, so it lives in the firmware repository
+(`scripts/tests/`), which installs this package and compares the two. It fails on
+the side that would have to change.

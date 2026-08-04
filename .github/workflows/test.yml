@@ -1,0 +1,36 @@
+# The suite runs on every push: there is no hardware in CI, and there does not
+# need to be - tests/fakenava.py models the device, so the transfer loops, the
+# protocol and the TUI are all exercised without one.
+#
+# The versions are the floor and the ceiling of what pyproject declares. 3.10 is
+# where `X | None` in a runtime-evaluated position would break first, and it is
+# not the version anyone develops on, so it is the one that regresses silently.
+
+name: Tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.10", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      # --locked rather than a plain sync: uv.lock is committed so the
+      # environment is reproducible, and a lockfile that no longer satisfies
+      # pyproject.toml should fail here rather than be silently updated.
+      - name: Install
+        run: uv sync --locked --extra tui --python ${{ matrix.python }}
+
+      - name: Test
+        run: uv run --python ${{ matrix.python }} pytest -q

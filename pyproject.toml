@@ -24,8 +24,10 @@ tui = ["textual>=0.80"]
 build = ["platformio>=6.1"]
 
 [project.urls]
-Homepage = "https://github.com/jeanbrazeau/Nava-Firmware"
-Source = "https://github.com/jeanbrazeau/Nava-Firmware/tree/master/tools"
+Homepage = "https://github.com/jeanbrazeau/nava-tools"
+Source = "https://github.com/jeanbrazeau/nava-tools"
+# The firmware this drives, and where a release tag is cut.
+Firmware = "https://github.com/jeanbrazeau/Nava-Firmware"
 
 [project.scripts]
 nava = "nava.cli:main"
