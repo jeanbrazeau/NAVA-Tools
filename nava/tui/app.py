@@ -570,6 +570,18 @@ class NavaApp(App):
     # not cancel a flash that is already sending pages to the device.
     @work(thread=True, exclusive=True, group="net")
     def _run_download(self, tag: str) -> None:
+        # Anything escaping a worker takes the whole application down with a
+        # traceback, losing the port selection and the log along with it. A
+        # download is driven by a free-text field, so it is the operation most
+        # likely to raise something releases.py did not think to wrap.
+        try:
+            self._download(tag)
+        except Exception as exc:
+            self.call_from_thread(
+                self._write, "#firmware-log", f"[red]download failed: {exc}[/red]"
+            )
+
+    def _download(self, tag: str) -> None:
         try:
             release = releases.fetch(tag)
         except releases.ReleaseError as exc:

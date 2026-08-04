@@ -16,9 +16,11 @@ which is what makes this usable from CI.
 
 from __future__ import annotations
 
+import http.client
 import json
 import os
 import urllib.error
+import urllib.parse
 import urllib.request
 from dataclasses import dataclass
 from typing import Callable
@@ -31,6 +33,14 @@ TIMEOUT = 30.0
 
 class ReleaseError(Exception):
     """A user-facing failure fetching or downloading a release."""
+
+
+class ReleaseNotFound(ReleaseError):
+    """Nothing published under that name - as opposed to a request that failed.
+
+    Its own class so `fetch` can tell "GitHub says no such tag" from "GitHub
+    could not be reached": only the first is worth retrying as a name lookup.
+    """
 
 
 @dataclass
@@ -83,9 +93,15 @@ def _get_json(url: str):
     try:
         with urllib.request.urlopen(_request(url, "application/vnd.github+json"), timeout=TIMEOUT) as response:
             return json.loads(response.read().decode("utf-8"))
+    except http.client.InvalidURL as exc:
+        # Reachable through NAVA_REPO, and through anything else that lands in a
+        # path segment: http.client rejects spaces and control characters with an
+        # exception that is neither HTTPError nor URLError, so uncaught it kills
+        # the TUI's worker thread rather than printing a line in its log.
+        raise ReleaseError(f"not a usable GitHub URL: {url!r} ({exc})") from exc
     except urllib.error.HTTPError as exc:
         if exc.code == 404:
-            raise ReleaseError(f"not found: {url}") from exc
+            raise ReleaseNotFound(f"not found: {url}") from exc
         if exc.code == 403:
             raise ReleaseError(
                 "GitHub refused the request (403). This is usually the "
@@ -123,11 +139,45 @@ def fetch(tag: str | None = None, repo: str = DEFAULT_REPO) -> Release:
 
     "latest" is GitHub's own endpoint, which skips pre-releases and drafts - the
     right default for a button that flashes a drum machine.
+
+    A tag is percent-encoded into the path rather than pasted into it. Tags here
+    are version numbers, but the string comes from a text field a person types
+    into, and a space in it made http.client raise before any request was sent -
+    a traceback instead of "no such release".
+
+    What is typed is also matched against release TITLES when no tag matches,
+    because the releases page shows the title (`Nava 0.92`) more prominently
+    than the tag (`0.92`), and that is what gets copied.
     """
     if not tag or tag == "latest":
         return _parse(_get_json(f"{API}/repos/{repo}/releases/latest"))
-    payload = _get_json(f"{API}/repos/{repo}/releases/tags/{tag}")
-    return _parse(payload)
+    quoted = urllib.parse.quote(tag.strip(), safe="")
+    try:
+        return _parse(_get_json(f"{API}/repos/{repo}/releases/tags/{quoted}"))
+    except ReleaseNotFound:
+        found = _by_title(tag, repo)
+        if found is None:
+            raise ReleaseNotFound(
+                f"not found: no release tagged or titled {tag.strip()!r} in {repo}"
+            ) from None
+        return found
+
+
+def _by_title(wanted: str, repo: str) -> Release | None:
+    """The release whose tag or title is `wanted`, ignoring case and spacing.
+
+    Only reached when the tag lookup already 404'd, so the extra request costs
+    nothing in the common case. Returns None rather than raising so the caller
+    can report the tag the user actually typed.
+    """
+    key = "".join(wanted.split()).casefold()
+    for release in list_releases(repo):
+        if key in {
+            "".join(release.tag.split()).casefold(),
+            "".join(release.name.split()).casefold(),
+        }:
+            return release
+    return None
 
 
 def download(

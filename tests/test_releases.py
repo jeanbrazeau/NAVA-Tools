@@ -7,6 +7,7 @@ where firmware should be, and turning GitHub's error codes into something a
 person can act on.
 """
 
+import http.client
 import io
 import json
 import urllib.error
@@ -74,6 +75,56 @@ def test_named_tag_is_requested_by_tag(monkeypatch):
     )
     releases.fetch("0.91b")
     assert seen[0][0].endswith("/releases/tags/0.91b")
+
+
+def test_a_tag_with_a_space_is_encoded_not_pasted(monkeypatch):
+    """http.client rejects a space in the path before sending anything, and the
+    exception is neither HTTPError nor URLError - which took the TUI down with a
+    traceback. The request has to be made, so it can 404 like any other miss."""
+    seen = install_urlopen(
+        monkeypatch, lambda url, h: FakeResponse(json.dumps(RELEASE_JSON).encode())
+    )
+    releases.fetch("Nava 0.91b")
+    assert seen[0][0].endswith("/releases/tags/Nava%200.91b")
+
+
+def test_a_release_title_resolves_to_its_tag(monkeypatch):
+    """The releases page shows 'Nava 0.92' louder than it shows '0.92', so that
+    is what gets copied into the field. One 404 on the tag, then the list."""
+
+    def handler(url, headers):
+        if "/releases/tags/" in url:
+            raise urllib.error.HTTPError(url, 404, "no such tag", {}, None)
+        return FakeResponse(json.dumps([RELEASE_JSON]).encode())
+
+    seen = install_urlopen(monkeypatch, handler)
+    assert releases.fetch("Nava 0.91b").tag == "0.91b"
+    assert "/releases?per_page=" in seen[1][0]
+
+
+def test_an_unknown_tag_names_what_was_typed(monkeypatch):
+    def handler(url, headers):
+        if "/releases/tags/" in url:
+            raise urllib.error.HTTPError(url, 404, "no such tag", {}, None)
+        return FakeResponse(json.dumps([RELEASE_JSON]).encode())
+
+    install_urlopen(monkeypatch, handler)
+    # The percent-encoded URL is no use to anyone reading the message.
+    with pytest.raises(releases.ReleaseError, match="'nava 9.99'"):
+        releases.fetch("nava 9.99")
+
+
+def test_an_unusable_url_does_not_raise_out_of_band(monkeypatch):
+    """NAVA_REPO reaches the path unencoded, so http.client.InvalidURL is still
+    possible - and it is neither HTTPError nor URLError, so it has to be caught
+    by name or it escapes as itself and kills the TUI's worker."""
+
+    def handler(url, headers):
+        raise http.client.InvalidURL("URL can't contain control characters")
+
+    install_urlopen(monkeypatch, handler)
+    with pytest.raises(releases.ReleaseError, match="not a usable GitHub URL"):
+        releases.fetch(repo="someone/Nava Fork")
 
 
 def test_firmware_asset_is_picked_by_extension_and_shortest_name(monkeypatch):

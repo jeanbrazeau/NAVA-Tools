@@ -124,7 +124,9 @@ installs can only use the first:
 
 - **Download** fetches a published build from the
   [releases page](https://github.com/jeanbrazeau/Nava-Firmware/releases). The tag
-  box takes `latest` or a specific tag such as `0.91b`. The file lands in the
+  box takes `latest`, a tag such as `0.91b`, or the release title as the page
+  shows it (`Nava 0.91b`) — that is what gets copied, so it is matched against
+  the release titles when no tag matches. The file lands in the
   browse directory named for the release — `nava-0.91b.syx` — so two releases
   cannot overwrite each other, and it shows up under Browse afterwards.
 - **Build** compiles the checkout with PlatformIO and converts the result. This
