@@ -50,33 +50,45 @@ body {
 
 .menubar {
   display: flex;
-  align-items: stretch;
+  align-items: center;
   gap: 0;
   background: var(--paper);
   border-bottom: 1px solid var(--ink);
-  padding: 0 4px;
+  padding: 2px 8px;
 }
 
 .menu-title {
   display: flex;
   align-items: center;
-  padding: 3px 14px 3px 6px;
+  padding: 3px 14px 3px 0;
   font-weight: 700;
   letter-spacing: 0.18em;
 }
 
-.menubar button[role="tab"] {
-  background: var(--paper);
-  border: none;
+/* The panel names, at the top of the dialog rather than the top of the screen.
+   They read as a strip of GEM buttons sharing one baseline rule - the active
+   one inverts and joins the dialog below it, which is the only cue needed for
+   which panel is showing. */
+.tabs {
+  display: flex;
+  gap: 4px;
+  margin: -2px -2px 14px;
+  border-bottom: 1px solid var(--ink);
+}
+.tabs button[role="tab"] {
+  background: var(--face);
+  border: 1px solid var(--ink);
+  border-bottom: none;
   color: var(--ink);
   font: inherit;
   letter-spacing: 0.08em;
-  padding: 3px 14px;
+  padding: 3px 16px;
   cursor: pointer;
+  position: relative;
+  top: 1px;
 }
-/* A GEM menu title highlights by inverting, not by underlining. */
-.menubar button[role="tab"]:hover,
-.menubar button[role="tab"][aria-selected="true"] {
+.tabs button[role="tab"]:hover { background: var(--paper); }
+.tabs button[role="tab"][aria-selected="true"] {
   background: var(--ink);
   color: var(--paper);
 }
@@ -111,13 +123,6 @@ main {
   padding: 14px 16px 16px;
 }
 
-.dialog-title {
-  margin: 0 0 14px;
-  text-align: center;
-  font: inherit;
-  font-size: 15px;
-  letter-spacing: 0.1em;
-}
 
 .row {
   display: flex;
@@ -142,7 +147,7 @@ fieldset.group {
   margin: 0 0 14px;
   min-width: 0;
 }
-main > section > fieldset.group:last-child { margin-bottom: 0; }
+section > fieldset.group:last-child { margin-bottom: 0; }
 fieldset.group legend {
   padding: 0 6px;
   background: var(--face);
@@ -535,6 +540,24 @@ dialog::backdrop {
   min-height: 24px;
 }
 .status-right { margin-left: auto; display: flex; align-items: center; gap: 12px; }
+
+/* The dialog floats in the middle of the desktop once there is room for it,
+   which is where GEM put one. `main` is already the flex child that takes the
+   height left between the desktop bar and the status line, so centring inside
+   it is centring in the window.
+
+   Below the breakpoint it goes back to filling the width, because a centred box
+   on a narrow window is just a narrower box. */
+@media (min-width: 1100px) and (min-height: 720px) {
+  main {
+    display: grid;
+    place-content: center;
+  }
+  #shell {
+    width: fit-content;
+    max-width: 100%;
+  }
+}
 
 @media (max-width: 760px) {
   .row { flex-direction: column; }

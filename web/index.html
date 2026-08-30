@@ -10,19 +10,15 @@
 </head>
 <body>
 
-<!-- The GEM menu bar. The panel names are the menu titles, which is what the
-     four tabs always were; the right-hand side is the accessory area. -->
-<nav class="menubar" role="tablist">
+<!-- The desktop bar: the application name and the accessory area. The panel
+     names are not here - they sit at the top of the dialog itself. -->
+<div class="menubar">
   <span class="menu-title">NAVA</span>
-  <button role="tab" aria-selected="true" aria-controls="panel-device" id="tab-device"><u>D</u>EVICE</button>
-  <button role="tab" aria-selected="false" aria-controls="panel-browse" id="tab-browse"><u>B</u>ROWSE</button>
-  <button role="tab" aria-selected="false" aria-controls="panel-transfer" id="tab-transfer"><u>T</u>RANSFER</button>
-  <button role="tab" aria-selected="false" aria-controls="panel-firmware" id="tab-firmware"><u>F</u>IRMWARE</button>
   <span class="menu-right">
     <span id="connection" class="pill">MIDI not enabled</span>
     <button id="enable-midi" class="btn default">Enable MIDI</button>
   </span>
-</nav>
+</div>
 
 <div id="unsupported" class="alert" hidden>
   <div class="alert-icon">!</div>
@@ -36,9 +32,16 @@
 </div>
 
 <main>
+<div id="shell" class="dialog">
 
-  <section id="panel-device" role="tabpanel" aria-labelledby="tab-device" class="dialog">
-    <h1 class="dialog-title">Device</h1>
+  <nav class="tabs" role="tablist">
+    <button role="tab" aria-selected="true" aria-controls="panel-device" id="tab-device"><u>D</u>EVICE</button>
+    <button role="tab" aria-selected="false" aria-controls="panel-browse" id="tab-browse"><u>B</u>ROWSE</button>
+    <button role="tab" aria-selected="false" aria-controls="panel-transfer" id="tab-transfer"><u>T</u>RANSFER</button>
+    <button role="tab" aria-selected="false" aria-controls="panel-firmware" id="tab-firmware"><u>F</u>IRMWARE</button>
+  </nav>
+
+  <section id="panel-device" role="tabpanel" aria-labelledby="tab-device">
 
     <p class="hint">
       Pick the MIDI out the Nava listens on and the MIDI in it answers on. They
@@ -76,8 +79,7 @@
     </fieldset>
   </section>
 
-  <section id="panel-browse" role="tabpanel" aria-labelledby="tab-browse" class="dialog" hidden>
-    <h1 class="dialog-title">Browse</h1>
+  <section id="panel-browse" role="tabpanel" aria-labelledby="tab-browse" hidden>
 
     <div id="dropzone" class="dropzone">
       Drop <code>.syx</code> files here, or
@@ -104,8 +106,7 @@
     </div>
   </section>
 
-  <section id="panel-transfer" role="tabpanel" aria-labelledby="tab-transfer" class="dialog" hidden>
-    <h1 class="dialog-title">Transfer</h1>
+  <section id="panel-transfer" role="tabpanel" aria-labelledby="tab-transfer" hidden>
 
     <div class="row">
       <fieldset class="group">
@@ -137,8 +138,7 @@
     </fieldset>
   </section>
 
-  <section id="panel-firmware" role="tabpanel" aria-labelledby="tab-firmware" class="dialog" hidden>
-    <h1 class="dialog-title">Firmware</h1>
+  <section id="panel-firmware" role="tabpanel" aria-labelledby="tab-firmware" hidden>
 
     <div class="row">
       <fieldset class="group">
@@ -179,6 +179,7 @@
     </fieldset>
   </section>
 
+</div>
 </main>
 
 <footer class="statusbar">
