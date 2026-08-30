@@ -2,3 +2,6 @@ __pycache__/
 *.pyc
 *.egg-info/
 .venv/
+
+# Written into the Pages artifact at deploy time, never committed.
+web/firmware/

@@ -546,27 +546,18 @@ $('do-download').addEventListener('click', async () => {
   const tag = $('release-tag').value.trim() || 'latest';
   const repo = state.repo;
   setBusy(true);
-  log('firmware-log', `looking up ${tag} in ${repo}…`);
   try {
-    const release = await releases.fetchRelease(tag, repo);
-    const asset = release.firmware;
-    if (!asset) throw new releases.ReleaseError(`${release.label} publishes no .syx`);
-    log('firmware-log', `${release.label}  ${release.published}  ${asset.name} (${asset.size} bytes)`);
+    const manifest = await releases.bundled();
+    const wantsLatest = tag === 'latest';
+    const usable =
+      manifest &&
+      manifest.repo === repo &&
+      (wantsLatest || matchesTag(manifest, tag));
 
-    const bytes = await releases.downloadAsset(asset, (done, total) => {
-      setProgress('firmware-progress', done, total);
-      status(`${done}/${total} bytes`);
-    });
-
-    // Named for the release rather than for the asset, so two releases cannot
-    // sit in the list under the same name.
-    const name = `nava-${release.tag.replace(/[^\w.-]+/g, '-')}.syx`;
-    const file = addFile(name, bytes);
-    if (!file || file.kind !== library.KIND_FIRMWARE) {
-      log('firmware-log', `${name} is not a bootloader image — refusing to offer it`, true);
+    if (usable) {
+      await useBundled(manifest, repo, wantsLatest);
     } else {
-      $('firmware-file').value = name;
-      log('firmware-log', `${name} ready: ${file.summary()}`);
+      await handOff(tag, repo, manifest);
     }
     state.settings.releaseTag = tag;
     store.save(state.settings);
@@ -575,6 +566,72 @@ $('do-download').addEventListener('click', async () => {
   }
   setBusy(false);
 });
+
+function matchesTag(manifest, tag) {
+  const key = tag.replace(/\s+/g, '').toLowerCase();
+  return [manifest.tag, manifest.name].some(
+    (value) => (value ?? '').replace(/\s+/g, '').toLowerCase() === key,
+  );
+}
+
+/** The copy deployed beside this page: one click, same origin, no CORS. */
+async function useBundled(manifest, repo, wantsLatest) {
+  log('firmware-log', `${manifest.tag}  ${manifest.published}  ${manifest.file} (deployed with this page)`);
+  const bytes = await releases.downloadBundled(manifest, (done, total) => {
+    setProgress('firmware-progress', done, total);
+    status(`${done}/${total} bytes`);
+  });
+  offer(manifest.file, bytes);
+
+  // Only worth a request when the user asked for "latest": the deployed copy is
+  // as new as the last time this site was built, and someone about to flash
+  // should know if the firmware has moved on since.
+  if (!wantsLatest) return;
+  try {
+    const newest = await releases.fetchRelease('latest', repo);
+    if (newest.tag && newest.tag !== manifest.tag) {
+      log(
+        'firmware-log',
+        `note: ${newest.tag} has been published since this page was built. ` +
+          `Type ${newest.tag} above to fetch it.`,
+      );
+    }
+  } catch {
+    // Offline, or rate limited. The image in hand is still good.
+  }
+}
+
+/* No deployed copy to use, so the browser downloads it and the file comes back
+ * by drag and drop. Two steps rather than one, and the only alternative to a
+ * CORS proxy - see the note at the top of releases.js. */
+async function handOff(tag, repo, manifest) {
+  log('firmware-log', `looking up ${tag} in ${repo}…`);
+  const release = await releases.fetchRelease(tag, repo);
+  const asset = release.firmware;
+  if (!asset) throw new releases.ReleaseError(`${release.label} publishes no .syx`);
+  log('firmware-log', `${release.label}  ${release.published}  ${asset.name} (${asset.size} bytes)`);
+
+  if (manifest) {
+    log('firmware-log', `(this page was deployed with ${manifest.tag}, so ${release.tag} has to come from GitHub)`);
+  }
+  releases.handOffToBrowser(asset);
+  log(
+    'firmware-log',
+    `${asset.name} is downloading in the browser — GitHub does not let a page read ` +
+      'a release asset directly. Drop the file on this page when it lands, and it ' +
+      'will appear in the list below.',
+  );
+}
+
+function offer(name, bytes) {
+  const file = addFile(name, bytes);
+  if (!file || file.kind !== library.KIND_FIRMWARE) {
+    log('firmware-log', `${name} is not a bootloader image — refusing to offer it`, true);
+    return;
+  }
+  $('firmware-file').value = name;
+  log('firmware-log', `${name} ready: ${file.summary()}`);
+}
 
 $('do-inspect').addEventListener('click', () => {
   const file = fileByName($('firmware-file').value);

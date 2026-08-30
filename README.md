@@ -3,12 +3,17 @@
 Two front ends over one protocol: a **web app** that needs nothing installed, and
 a command line tool for the parts a browser cannot do.
 
-**→ [jeanbrazeau.github.io/nava-tools](https://jeanbrazeau.github.io/nava-tools/)**
-
 Open it, allow MIDI, and back up your patterns, restore them, or flash firmware.
 Nothing is uploaded: the page reads the `.syx` in the tab and talks to the unit
-over Web MIDI, and the only thing it ever fetches is the firmware image, straight
-from the releases page.
+over Web MIDI.
+
+> **Not published yet.** The site is built and tested but deliberately not
+> deployed — see [Deploying the site](#deploying-the-site). To try it now, serve
+> `web/` locally:
+>
+> ```bash
+> python3 -m http.server -d web 8000
+> ```
 
 It needs a **Chromium-based browser** — Chrome, Edge, Opera, Brave, Arc, Helium,
 Vivaldi. Web MIDI is a Chromium API; Safari and Firefox have no implementation,
@@ -59,11 +64,29 @@ A `.hex` dropped here is converted to a bootloader `.syx` on the way in, which i
 a full backup takes minutes, and the browser will not open a file dialog that
 late.
 
-**Firmware** downloads a published build and sends it. The tag box takes
-`latest`, a tag such as `0.91b`, or the release title as the page shows it
-(`Nava 0.91b`) — that is what gets copied, so it is matched against the release
-titles when no tag matches. Add `?repo=owner/name` to the URL to point it at a
-fork; that is the browser's `NAVA_REPO`, and a link carries it.
+**Firmware** gets a published build and sends it. The tag box takes `latest`, a
+tag such as `0.91b`, or the release title as the page shows it (`Nava 0.91b`) —
+that is what gets copied, so it is matched against the release titles when no
+tag matches. Add `?repo=owner/name` to the URL to point it at a fork; that is
+the browser's `NAVA_REPO`, and a link carries it.
+
+Getting the image works two ways, and the reason is worth stating because it
+looks like a bug otherwise. **A browser cannot read a GitHub release asset.**
+`api.github.com` answers with `access-control-allow-origin: *`, so looking a
+release up works; the asset itself — the redirect from `github.com` and the
+`release-assets.githubusercontent.com` response behind it — sends no such
+header, so `fetch` on it fails in every browser. There is no header to ask for
+and no endpoint that behaves differently, and a CORS proxy is the wrong answer
+for a page that flashes firmware. So:
+
+- **`latest` uses the copy deployed beside the page.** The Pages workflow
+  downloads it at build time, where no CORS applies, and writes
+  `web/firmware/index.json` next to it. One click, same origin, no third party
+  in the path at all. If a newer release has been published since the site was
+  built, the log says so and names the tag.
+- **Any other tag hands off to the browser's own downloader** and asks for the
+  file back by drag and drop. Two steps instead of one, which is the price of
+  the paragraph above.
 
 Transfer and Firmware both name what they are about to overwrite and ask first —
 neither is reversible, and the unit gives no confirmation of its own. A firmware
@@ -276,11 +299,21 @@ the side that would have to change.
 
 `web/` is plain ES modules and one stylesheet: no build step, no dependencies,
 nothing fetched from a CDN. `.github/workflows/pages.yml` uploads that directory
-to GitHub Pages after the test workflow passes on `master`.
+to GitHub Pages, and on the way it downloads the current firmware release into
+`web/firmware/` so the Firmware panel is one click (see above for why that
+cannot happen in the browser).
 
-It needs the repository set up once: **Settings → Pages → Source → GitHub
-Actions**. With the default branch-based source the workflow runs and the deploy
-step fails, because that source ignores artifacts entirely.
+**Nothing is published today, on purpose.** Two things stand between this
+repository and a live site:
+
+1. The workflow is `workflow_dispatch` only — it runs when someone presses "Run
+   workflow" on the Actions tab, so merging to `master` deploys nothing. To
+   publish on every green `master` build instead, uncomment the `workflow_run`
+   trigger at the top of the file.
+2. GitHub Pages has to be told to serve what Actions uploads: **Settings → Pages
+   → Source → GitHub Actions**. Under the default branch-based source the
+   workflow runs and the deploy step fails, because that source ignores
+   artifacts entirely.
 
 To work on it locally, serve the directory — ES modules will not load over
 `file://`, and Web MIDI needs a secure context, which `localhost` counts as:
@@ -288,3 +321,7 @@ To work on it locally, serve the directory — ES modules will not load over
 ```bash
 python3 -m http.server -d web 8000
 ```
+
+Locally there is no `web/firmware/`, so the Firmware panel takes the hand-off
+path. That is the same path a visitor gets for any tag other than the deployed
+one, so it is the one worth testing by hand.
