@@ -185,6 +185,7 @@ function portList(element, ports, selectedName, onPick) {
   for (const port of ports) {
     const item = document.createElement('li');
     item.setAttribute('aria-selected', String(port.name === selectedName));
+    item.title = port.manufacturer ? `${port.name} — ${port.manufacturer}` : port.name;
     const name = document.createElement('span');
     name.textContent = port.name;
     const sub = document.createElement('span');
@@ -303,12 +304,13 @@ function refreshFiles() {
   for (const file of state.files) {
     const item = document.createElement('li');
     item.setAttribute('aria-selected', String(file === state.selectedFile));
+    // Filename only. A backup summary is a dozen words - putting it beside a
+    // 25-character filename in a list box leaves room for neither, and it is
+    // already on the row's title and in the Detail pane.
+    item.title = `${file.name} — ${file.summary()}`;
     const name = document.createElement('span');
     name.textContent = file.name;
-    const sub = document.createElement('span');
-    sub.className = 'sub';
-    sub.textContent = file.summary();
-    item.append(name, sub);
+    item.append(name);
     item.addEventListener('click', () => selectFile(file));
     list.appendChild(item);
   }
@@ -368,11 +370,13 @@ function refreshItems() {
   for (const entry of file.items) {
     const item = document.createElement('li');
     item.setAttribute('aria-selected', String(entry === state.selectedItem));
+    const summary = summariseItem(entry);
+    item.title = `${entry.label} — ${summary}`;
     const name = document.createElement('span');
     name.textContent = entry.label;
     const sub = document.createElement('span');
     sub.className = 'sub';
-    sub.textContent = summariseItem(entry);
+    sub.textContent = summary;
     item.append(name, sub);
     item.addEventListener('click', () => {
       state.selectedItem = entry;

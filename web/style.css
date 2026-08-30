@@ -1,268 +1,409 @@
-/* One stylesheet, no framework. The page is a instrument-panel utility, not a
- * document: fixed-width type for anything that is data, a colour per state, and
- * enough contrast to read next to a drum machine under stage light. */
+/* Atari TOS / GEM.
+ *
+ * The rules that make it read as GEM rather than as "flat design with square
+ * corners": there are exactly two colours, every edge is one hard black pixel,
+ * nothing is rounded, nothing has a gradient, and the only depth cue is a solid
+ * black drop shadow offset down-right. Selection is an invert, not a tint.
+ *
+ * The desktop behind the dialogs is the 50% dither - a 2px checkerboard, which
+ * is how a 1-bit display made grey and why GEM looks the way it does.
+ */
 
 :root {
-  color-scheme: dark light;
-  --bg: #0e0f11;
-  --panel: #17191d;
-  --panel-2: #1e2126;
-  --line: #2b2f36;
-  --text: #dfe3e8;
-  --muted: #8b93a0;
-  --accent: #ff7a1a;
-  --danger: #e0524a;
-  --ok: #4fbf72;
-  --mono: ui-monospace, "SF Mono", "Cascadia Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+  color-scheme: light only;
+  --ink: #000;
+  --paper: #fff;
+  --face: #cfcfcf;   /* dialog fill */
+  --shadow: 3px 3px 0 var(--ink);
+  --font: ui-monospace, "SF Mono", Menlo, Consolas, "DejaVu Sans Mono", monospace;
+  --dither: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='2' height='2' shape-rendering='crispEdges'%3E%3Crect width='1' height='1'/%3E%3Crect x='1' y='1' width='1' height='1'/%3E%3C/svg%3E");
 }
 
 * { box-sizing: border-box; }
 
-/* A column the height of the viewport, so the status bar sits at the bottom of
-   the window on a short panel instead of floating in the middle of it. */
+/* Any rule setting `display` on a tag or class outranks the user agent's
+   [hidden] rule, so a hidden element renders anyway. That has now bitten the
+   tab panels (`section`) and the alert box (`.alert`); one global rule is the
+   fix, rather than remembering a guard per component. */
+[hidden] { display: none !important; }
+
 body {
   margin: 0;
   min-height: 100vh;
   display: flex;
   flex-direction: column;
-  background: var(--bg);
-  color: var(--text);
-  font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+  color: var(--ink);
+  font: 13px/1.45 var(--font);
+  letter-spacing: 0.02em;
+  /* The 50% dither: two colours in a 2px checkerboard, which is how a 1-bit
+     display made grey. Drawn as an SVG rather than a conic gradient because a
+     gradient gets antialiased into mush at this size, and the whole point is
+     that the pixels are hard. */
+  background-color: var(--paper);
+  background-image: var(--dither);
+  background-size: 2px 2px;
+  -webkit-font-smoothing: none;
+  font-smooth: never;
 }
 
-main { flex: 1; }
+/* ---------- menu bar ---------- */
 
-.bar {
+.menubar {
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+  background: var(--paper);
+  border-bottom: 1px solid var(--ink);
+  padding: 0 4px;
+}
+
+.menu-title {
   display: flex;
   align-items: center;
-  gap: 1rem;
-  padding: 0.7rem 1.2rem;
-  background: var(--panel);
-  border-bottom: 1px solid var(--line);
+  padding: 3px 14px 3px 6px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
 }
 
-footer.bar {
-  border-bottom: none;
-  border-top: 1px solid var(--line);
-  min-height: 3rem;
+.menubar button[role="tab"] {
+  background: var(--paper);
+  border: none;
+  color: var(--ink);
+  font: inherit;
+  letter-spacing: 0.08em;
+  padding: 3px 14px;
+  cursor: pointer;
+}
+/* A GEM menu title highlights by inverting, not by underlining. */
+.menubar button[role="tab"]:hover,
+.menubar button[role="tab"][aria-selected="true"] {
+  background: var(--ink);
+  color: var(--paper);
 }
 
-h1 {
-  margin: 0;
-  font: 700 1.3rem/1 var(--mono);
-  letter-spacing: 0.04em;
-  color: var(--accent);
-}
-
-.tagline { margin: 0; color: var(--muted); font-size: 0.9rem; }
-
-.bar-right {
+.menu-right {
   margin-left: auto;
   display: flex;
   align-items: center;
-  gap: 0.7rem;
+  gap: 8px;
+  padding: 2px 4px;
 }
 
-.pill {
-  font: 0.8rem var(--mono);
-  padding: 0.25rem 0.6rem;
-  border-radius: 999px;
-  border: 1px solid var(--line);
-  color: var(--muted);
-  white-space: nowrap;
-}
-.pill-ok { color: var(--ok); border-color: var(--ok); }
-.pill-warn { color: var(--accent); border-color: var(--accent); }
-.pill-idle { color: var(--muted); }
+.pill { white-space: nowrap; }
+.pill-ok::before { content: "\2666  "; }     /* filled diamond: ports ready */
+.pill-warn::before { content: "\25C7  "; }   /* hollow diamond: half ready */
+.pill-idle::before { content: "\25C7  "; }
 
-.banner {
-  margin: 0;
-  padding: 0.8rem 1.2rem;
-  background: #2a1d10;
-  border-bottom: 1px solid var(--accent);
-  font-size: 0.9rem;
+/* ---------- dialogs ---------- */
+
+main {
+  flex: 1;
+  padding: 18px;
+  max-width: 1200px;
+  width: 100%;
+  margin-inline: auto;
 }
 
-.tabs {
+.dialog {
+  background: var(--face);
+  border: 1px solid var(--ink);
+  box-shadow: var(--shadow);
+  padding: 14px 16px 16px;
+}
+
+.dialog-title {
+  margin: 0 0 14px;
+  text-align: center;
+  font: inherit;
+  font-size: 15px;
+  letter-spacing: 0.1em;
+}
+
+.row {
   display: flex;
-  gap: 0;
-  padding: 0 1.2rem;
-  background: var(--panel);
-  border-bottom: 1px solid var(--line);
+  gap: 14px;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  margin-bottom: 14px;
 }
+.row:last-child { margin-bottom: 0; }
+.row > * { flex: 1 1 20rem; min-width: 15rem; }
 
-.tabs button {
-  background: none;
-  border: none;
-  border-bottom: 2px solid transparent;
-  color: var(--muted);
-  font: 600 0.95rem/1 system-ui, sans-serif;
-  padding: 0.75rem 1rem;
+.browse-row > .col-files { flex: 1 1 17rem; }
+.browse-row > .col-items { flex: 1 1 17rem; }
+.browse-row > .col-detail { flex: 3 1 26rem; }
+
+/* GEM group boxes: a hairline rectangle with the label sitting on the edge. */
+fieldset.group {
+  border: 1px solid var(--ink);
+  padding: 10px 12px 12px;
+  margin: 0 0 14px;
+  min-width: 0;
+}
+main > section > fieldset.group:last-child { margin-bottom: 0; }
+fieldset.group legend {
+  padding: 0 6px;
+  background: var(--face);
+}
+fieldset.group p { margin: 0 0 8px; }
+fieldset.group p:last-child { margin-bottom: 0; }
+
+.hint { margin: 0 0 14px; }
+.muted { opacity: 0.72; }
+
+/* ---------- radio lists (the port pickers) ---------- */
+
+.radios {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 15rem;
+  overflow: auto;
+}
+.radios li {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  padding: 1px 2px;
   cursor: pointer;
 }
-.tabs button[aria-selected="true"] { color: var(--text); border-bottom-color: var(--accent); }
-.tabs button:hover { color: var(--text); }
-
-main { padding: 1.2rem; max-width: 1500px; width: 100%; margin-inline: auto; }
-
-section { display: flex; flex-direction: column; gap: 1rem; }
-/* `display` on a bare tag selector beats the user agent's [hidden] rule, so
-   without this the tab panels all render at once and only the first is
-   reachable. */
-section[hidden] { display: none; }
-
-h2 {
-  margin: 0 0 0.4rem;
-  font: 600 0.95rem/1.2 system-ui, sans-serif;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--muted);
+/* The GEM radio: a hollow diamond that gains a solid centre when chosen. */
+.radios li::before {
+  content: "";
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border: 1px solid var(--ink);
+  transform: rotate(45deg);
+  position: relative;
+  top: -1px;
 }
-h2 small { text-transform: none; letter-spacing: 0; font-weight: 400; opacity: 0.7; }
+.radios li[aria-selected="true"]::before { background: var(--ink); }
+.radios li:hover { text-decoration: underline; }
+.radios li > span:first-of-type { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.radios li .sub { margin-left: auto; padding-left: 10px; opacity: 0.7; white-space: nowrap; }
+.radios li.empty { cursor: default; opacity: 0.7; }
+.radios li.empty::before { visibility: hidden; }
+.radios li.empty:hover { text-decoration: none; }
 
-.columns { display: flex; gap: 1.2rem; flex-wrap: wrap; align-items: flex-start; }
-.column {
-  flex: 1 1 20rem;
-  min-width: 16rem;
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  padding: 1rem;
+/* ---------- list boxes (files, contents) ---------- */
+
+.listbox {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  background: var(--paper);
+  border: 1px solid var(--ink);
+  min-height: 8rem;
+  max-height: 20rem;
+  overflow: auto;
 }
-.column.narrow { flex: 0 1 15rem; }
-.column.grow { flex: 3 1 30rem; }
-.columns.browse { align-items: stretch; }
+.listbox li {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 2px 5px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+/* One row per entry, always. A wrapped filename turns a list box into a
+   paragraph and the inverted selection stops reading as a row; the full name
+   is on the element's title and in the Detail pane. */
+.listbox li > span:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+.listbox li .sub { flex: none; }
+/* Selection inverts. On a 1-bit display it was the only thing it could do, and
+   it is still the least ambiguous way to say "this row". */
+.listbox li[aria-selected="true"] { background: var(--ink); color: var(--paper); }
+.listbox li:hover:not([aria-selected="true"]) { text-decoration: underline; }
+.listbox li .sub { opacity: 0.7; text-align: right; }
+.listbox li[aria-selected="true"] .sub { opacity: 0.85; }
+.listbox li.empty { cursor: default; opacity: 0.7; }
+.listbox li.empty:hover { text-decoration: none; }
 
-.hint, .muted { color: var(--muted); font-size: 0.88rem; }
-.hint { margin: 0; }
-.mono { font-family: var(--mono); }
+/* ---------- fields ---------- */
 
-label { display: block; margin-bottom: 0.7rem; color: var(--muted); font-size: 0.85rem; }
-label.check { display: flex; align-items: center; gap: 0.4rem; }
+label.field { display: block; margin-bottom: 9px; }
 
 input[type="text"], input:not([type]), select {
   display: block;
   width: 100%;
-  margin-top: 0.25rem;
-  background: var(--panel-2);
-  border: 1px solid var(--line);
-  border-radius: 4px;
-  color: var(--text);
-  font: 0.9rem var(--mono);
-  padding: 0.45rem 0.6rem;
+  margin-top: 3px;
+  background: var(--paper);
+  border: 1px solid var(--ink);
+  border-radius: 0;
+  color: var(--ink);
+  font: inherit;
+  padding: 3px 5px;
 }
-input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+select { appearance: none; padding-right: 22px;
+  /* The GEM popup arrow, drawn rather than fetched. */
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='9' height='6'%3E%3Cpath d='M0 0h9L4.5 6z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 6px center;
+}
+input:focus, select:focus, .btn:focus-visible {
+  outline: 1px solid var(--ink);
+  outline-offset: 1px;
+}
 
-button {
-  background: var(--panel-2);
-  border: 1px solid var(--line);
-  border-radius: 4px;
-  color: var(--text);
-  font: 600 0.9rem system-ui, sans-serif;
-  padding: 0.45rem 0.9rem;
+label.check { display: flex; align-items: center; gap: 7px; margin-bottom: 9px; cursor: pointer; }
+input[type="checkbox"] {
+  appearance: none;
+  width: 11px;
+  height: 11px;
+  margin: 0;
+  border: 1px solid var(--ink);
+  background: var(--paper);
+  display: grid;
+  place-content: center;
   cursor: pointer;
 }
-button:hover:not(:disabled) { border-color: var(--muted); }
-button:disabled { opacity: 0.45; cursor: not-allowed; }
-button.primary { background: var(--accent); border-color: var(--accent); color: #16130f; }
-button.danger { background: var(--danger); border-color: var(--danger); color: #fff; }
-button.ghost { background: none; }
-button.link {
-  background: none; border: none; padding: 0;
-  color: var(--accent); text-decoration: underline; font-weight: 600;
+input[type="checkbox"]:checked::before {
+  content: "\2715";           /* the GEM tick is an x */
+  font-size: 9px;
+  line-height: 1;
 }
 
-a { color: var(--accent); }
+/* ---------- buttons ---------- */
 
-.ports {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  max-height: 22rem;
-  overflow: auto;
-  border: 1px solid var(--line);
-  border-radius: 4px;
-  background: var(--panel-2);
-}
-.ports li {
-  padding: 0.4rem 0.6rem;
-  font: 0.85rem var(--mono);
-  border-bottom: 1px solid var(--line);
+.btn {
+  background: var(--face);
+  border: 1px solid var(--ink);
+  border-radius: 0;
+  color: var(--ink);
+  font: inherit;
+  padding: 3px 14px;
   cursor: pointer;
-  display: flex;
-  justify-content: space-between;
-  gap: 0.6rem;
 }
-.ports li:last-child { border-bottom: none; }
-.ports li:hover { background: #23262c; }
-.ports li[aria-selected="true"] { background: #2c2013; color: var(--accent); }
-.ports li .sub { color: var(--muted); font-size: 0.78rem; }
-.ports li.empty { color: var(--muted); cursor: default; }
-.ports li.empty:hover { background: none; }
+.btn:hover:not(:disabled) { background: var(--paper); }
+.btn:active:not(:disabled) { background: var(--ink); color: var(--paper); }
+/* The default button carries a second rule around it, which is how GEM said
+   "this is what Return does". */
+.btn.default { box-shadow: 0 0 0 1px var(--face), 0 0 0 2px var(--ink); margin: 2px; }
+.btn.small { padding: 1px 9px; }
+.btn:disabled { opacity: 0.45; cursor: not-allowed; }
 
-.dropzone {
-  border: 1px dashed var(--line);
-  border-radius: 6px;
-  padding: 1rem;
-  text-align: center;
-  background: var(--panel);
-}
-.dropzone p { margin: 0.2rem 0; }
-.dropzone.over { border-color: var(--accent); background: #201a13; }
+.buttons { display: flex; gap: 10px; margin-top: 10px; }
 
-pre.grid, pre.log {
+a { color: var(--ink); }
+u { text-decoration-thickness: 1px; text-underline-offset: 2px; }
+
+/* ---------- paper areas ---------- */
+
+pre.paper {
   margin: 0;
-  background: var(--panel-2);
-  border: 1px solid var(--line);
-  border-radius: 4px;
-  padding: 0.8rem;
-  font: 0.85rem/1.45 var(--mono);
+  background: var(--paper);
+  border: 1px solid var(--ink);
+  padding: 8px 10px;
+  font: inherit;
   overflow: auto;
   white-space: pre;
+  min-height: 12rem;
 }
-pre.grid { min-height: 12rem; }
-pre.log { max-height: 16rem; min-height: 6rem; }
-pre.log .bad { color: var(--danger); }
+/* The grid must never wrap - a wrapped step row is unreadable - but a log line
+   can be a sentence, and scrolling sideways to read an error is worse than a
+   soft wrap. */
+pre.log { min-height: 6rem; max-height: 14rem; white-space: pre-wrap; }
+pre.log .bad { font-weight: 700; }
+pre.log .bad::before { content: "! "; }
+#legend { margin: 8px 0 0; }
 
+/* A GEM progress bar: solid ink filling a white trough, no animation. */
 progress {
+  appearance: none;
   width: 100%;
-  height: 0.5rem;
-  accent-color: var(--accent);
+  height: 12px;
+  margin-bottom: 10px;
+  border: 1px solid var(--ink);
+  background: var(--paper);
 }
+progress::-webkit-progress-bar { background: var(--paper); }
+progress::-webkit-progress-value { background: var(--ink); }
 
-details.note {
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  padding: 0.7rem 1rem;
-  font-size: 0.88rem;
+.dropzone {
+  border: 1px dashed var(--ink);
+  padding: 9px 12px;
+  margin-bottom: 14px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
 }
-details.note summary { cursor: pointer; color: var(--muted); font-weight: 600; }
-details.note p { color: var(--muted); }
+.dropzone.over { background: var(--paper); border-style: solid; }
 
 kbd {
-  font: 0.8rem var(--mono);
-  background: var(--panel-2);
-  border: 1px solid var(--line);
-  border-bottom-width: 2px;
-  border-radius: 3px;
-  padding: 0.05rem 0.35rem;
+  border: 1px solid var(--ink);
+  padding: 0 4px;
+  background: var(--paper);
 }
-code { font: 0.85em var(--mono); color: var(--accent); }
+code { font: inherit; text-decoration: underline; text-underline-offset: 2px; }
+
+/* ---------- alert boxes ---------- */
+
+.alert {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  background: var(--face);
+  border: 1px solid var(--ink);
+  box-shadow: var(--shadow);
+  padding: 12px 14px;
+  margin: 18px 18px 0;
+}
+main + .alert, .alert { max-width: 1200px; }
+#unsupported { margin-inline: auto; }
+/* The GEM stop/alert icon: a heavy exclamation in a hard box. */
+.alert-icon {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  border: 1px solid var(--ink);
+  display: grid;
+  place-content: center;
+  font-weight: 700;
+  font-size: 16px;
+}
+.alert h2 { margin: 0 0 6px; font: inherit; font-weight: 700; }
+.alert p { margin: 0; }
 
 dialog {
-  background: var(--panel);
-  color: var(--text);
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  padding: 1.2rem;
-  max-width: 32rem;
+  background: var(--face);
+  color: var(--ink);
+  border: 1px solid var(--ink);
+  box-shadow: var(--shadow);
+  border-radius: 0;
+  padding: 14px;
+  max-width: 34rem;
+  font: inherit;
 }
-dialog::backdrop { background: rgb(0 0 0 / 0.6); }
-dialog h2 { color: var(--danger); }
-.dialog-buttons { display: flex; justify-content: flex-end; gap: 0.6rem; margin-top: 1rem; }
+dialog .alert { margin: 0; box-shadow: none; border: none; background: none; padding: 0; }
+dialog::backdrop {
+  background-color: var(--paper);
+  background-image: var(--dither);
+  background-size: 2px 2px;
+  opacity: 0.5;
+}
+.dialog-buttons { display: flex; justify-content: center; gap: 14px; margin-top: 14px; }
 
-@media (max-width: 720px) {
-  .columns { flex-direction: column; }
-  .tagline { display: none; }
+/* ---------- status line ---------- */
+
+.statusbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--paper);
+  border-top: 1px solid var(--ink);
+  padding: 3px 8px;
+  min-height: 24px;
+}
+.status-right { margin-left: auto; display: flex; align-items: center; gap: 12px; }
+
+@media (max-width: 760px) {
+  .row { flex-direction: column; }
+  .row > * { width: 100%; }
+  .menu-title { display: none; }
 }

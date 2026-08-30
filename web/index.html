@@ -5,55 +5,60 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>nava — back up, browse and flash the Nava over MIDI</title>
 <meta name="description" content="Browser tool for the Nava TR-909 replica: back up patterns, restore them, and flash firmware over Web MIDI. Nothing to install.">
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect width='16' height='16' rx='3' fill='%23111'/><rect x='3' y='4' width='2' height='8' fill='%23ff7a1a'/><rect x='7' y='4' width='2' height='8' fill='%23ff7a1a'/><rect x='11' y='4' width='2' height='8' fill='%23555'/></svg>">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect width='16' height='16' fill='%23fff' stroke='%23000' stroke-width='2'/><rect x='4' y='4' width='2' height='8'/><rect x='7' y='4' width='2' height='8'/><rect x='10' y='4' width='2' height='8'/></svg>">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
 
-<header class="bar">
-  <h1>nava</h1>
-  <p class="tagline">back up, browse and flash the Nava — in the browser</p>
-  <div class="bar-right">
-    <span id="connection" class="pill pill-idle">MIDI not enabled</span>
-    <button id="enable-midi" class="primary">Enable MIDI</button>
-  </div>
-</header>
-
-<div id="unsupported" class="banner" hidden>
-  <strong>This browser cannot talk to the unit.</strong>
-  Web MIDI needs a Chromium-based browser — Chrome, Edge, Opera, Brave, Arc,
-  Helium, Vivaldi and the rest of them. Safari and Firefox have no
-  implementation, so ports will not appear. Browsing and decoding a
-  <code>.syx</code> file works here regardless.
-</div>
-
-<nav class="tabs" role="tablist">
-  <button role="tab" aria-selected="true" aria-controls="panel-device" id="tab-device">Device</button>
-  <button role="tab" aria-selected="false" aria-controls="panel-browse" id="tab-browse">Browse</button>
-  <button role="tab" aria-selected="false" aria-controls="panel-transfer" id="tab-transfer">Transfer</button>
-  <button role="tab" aria-selected="false" aria-controls="panel-firmware" id="tab-firmware">Firmware</button>
+<!-- The GEM menu bar. The panel names are the menu titles, which is what the
+     four tabs always were; the right-hand side is the accessory area. -->
+<nav class="menubar" role="tablist">
+  <span class="menu-title">NAVA</span>
+  <button role="tab" aria-selected="true" aria-controls="panel-device" id="tab-device"><u>D</u>EVICE</button>
+  <button role="tab" aria-selected="false" aria-controls="panel-browse" id="tab-browse"><u>B</u>ROWSE</button>
+  <button role="tab" aria-selected="false" aria-controls="panel-transfer" id="tab-transfer"><u>T</u>RANSFER</button>
+  <button role="tab" aria-selected="false" aria-controls="panel-firmware" id="tab-firmware"><u>F</u>IRMWARE</button>
+  <span class="menu-right">
+    <span id="connection" class="pill">MIDI not enabled</span>
+    <button id="enable-midi" class="btn default">Enable MIDI</button>
+  </span>
 </nav>
+
+<div id="unsupported" class="alert" hidden>
+  <div class="alert-icon">!</div>
+  <div>
+    <strong>This browser cannot talk to the unit.</strong>
+    Web MIDI needs a Chromium-based browser — Chrome, Edge, Opera, Brave, Arc,
+    Helium, Vivaldi and the rest of them. Safari and Firefox have no
+    implementation, so ports will not appear. Browsing and decoding a
+    <code>.syx</code> file works here regardless.
+  </div>
+</div>
 
 <main>
 
-  <section id="panel-device" role="tabpanel" aria-labelledby="tab-device">
+  <section id="panel-device" role="tabpanel" aria-labelledby="tab-device" class="dialog">
+    <h1 class="dialog-title">Device</h1>
+
     <p class="hint">
       Pick the MIDI out the Nava listens on and the MIDI in it answers on. They
       are remembered by name, not by position — an index moves whenever a USB
       device is added or removed.
     </p>
-    <div class="columns">
-      <div class="column">
-        <h2>Output <small>host → Nava</small></h2>
-        <ul id="out-ports" class="ports"></ul>
-      </div>
-      <div class="column">
-        <h2>Input <small>Nava → host</small></h2>
-        <ul id="in-ports" class="ports"></ul>
-      </div>
+
+    <div class="row">
+      <fieldset class="group">
+        <legend>Output: <span class="muted">host → Nava</span></legend>
+        <ul id="out-ports" class="radios"></ul>
+      </fieldset>
+      <fieldset class="group">
+        <legend>Input: <span class="muted">Nava → host</span></legend>
+        <ul id="in-ports" class="radios"></ul>
+      </fieldset>
     </div>
-    <details class="note">
-      <summary>What the unit has to be doing</summary>
+
+    <fieldset class="group">
+      <legend>What the unit has to be doing</legend>
       <p>
         <strong>Backup and restore</strong> need the unit stopped and on the SysEx
         config page: <kbd>SHIFT</kbd> + <kbd>TEMPO</kbd> to <code>type / select</code>.
@@ -68,62 +73,79 @@
         is no longer running the firmware — and the unit restarts on its own when
         the transfer finishes.
       </p>
-    </details>
+    </fieldset>
   </section>
 
-  <section id="panel-browse" role="tabpanel" aria-labelledby="tab-browse" hidden>
+  <section id="panel-browse" role="tabpanel" aria-labelledby="tab-browse" class="dialog" hidden>
+    <h1 class="dialog-title">Browse</h1>
+
     <div id="dropzone" class="dropzone">
-      <p>Drop <code>.syx</code> files here, or <button id="pick-files" class="link">choose files</button>.</p>
-      <p class="muted">Nothing is uploaded. Files are read in the tab and stay there.</p>
+      Drop <code>.syx</code> files here, or
+      <button id="pick-files" class="btn"><u>C</u>hoose files</button>
+      <span class="muted">Nothing is uploaded. Files are read in the tab and stay there.</span>
       <input id="file-input" type="file" accept=".syx,.SYX,.hex,.HEX" multiple hidden>
     </div>
-    <div class="columns browse">
-      <div class="column narrow">
-        <h2>Files</h2>
-        <ul id="files" class="ports"></ul>
-      </div>
-      <div class="column narrow">
-        <h2>Contents</h2>
-        <ul id="items" class="ports"></ul>
-      </div>
-      <div class="column grow">
-        <h2>Detail</h2>
-        <pre id="detail" class="grid">Load a .syx to see what is in it.</pre>
-        <p id="legend" class="muted mono"></p>
-      </div>
+
+    <div class="row browse-row">
+      <fieldset class="group col-files">
+        <legend>Files</legend>
+        <ul id="files" class="listbox"></ul>
+      </fieldset>
+      <fieldset class="group col-items">
+        <legend>Contents</legend>
+        <ul id="items" class="listbox"></ul>
+      </fieldset>
+      <fieldset class="group col-detail">
+        <legend>Detail</legend>
+        <pre id="detail" class="paper">Load a .syx to see what is in it.</pre>
+        <p id="legend" class="muted"></p>
+      </fieldset>
     </div>
   </section>
 
-  <section id="panel-transfer" role="tabpanel" aria-labelledby="tab-transfer" hidden>
-    <div class="columns">
-      <div class="column">
-        <h2>Dump <small>Nava → file</small></h2>
-        <label>Patterns <input id="dump-patterns" value="all" spellcheck="false" placeholder="all, C, A1-A16"></label>
-        <label>Tracks <input id="dump-tracks" value="all" spellcheck="false" placeholder="all, 1-4"></label>
+  <section id="panel-transfer" role="tabpanel" aria-labelledby="tab-transfer" class="dialog" hidden>
+    <h1 class="dialog-title">Transfer</h1>
+
+    <div class="row">
+      <fieldset class="group">
+        <legend>Dump: <span class="muted">Nava → file</span></legend>
+        <label class="field">Patterns
+          <input id="dump-patterns" value="all" spellcheck="false" placeholder="all, C, A1-A16">
+        </label>
+        <label class="field">Tracks
+          <input id="dump-tracks" value="all" spellcheck="false" placeholder="all, 1-4">
+        </label>
         <label class="check"><input id="dump-config" type="checkbox" checked> Config record</label>
-        <button id="do-dump" class="primary">Dump</button>
-      </div>
-      <div class="column">
-        <h2>Restore <small>file → Nava</small></h2>
-        <label>Backup
+        <div class="buttons"><button id="do-dump" class="btn default">Dump</button></div>
+      </fieldset>
+
+      <fieldset class="group">
+        <legend>Restore: <span class="muted">file → Nava</span></legend>
+        <label class="field">Backup
           <select id="restore-file"><option value="">— load a .syx under Browse —</option></select>
         </label>
         <p class="muted">Overwrites the patterns, tracks and setup the file names. Not reversible.</p>
-        <button id="do-restore" class="danger">Restore</button>
-      </div>
+        <div class="buttons"><button id="do-restore" class="btn">Restore</button></div>
+      </fieldset>
     </div>
-    <progress id="transfer-progress" value="0" max="1"></progress>
-    <pre id="transfer-log" class="log"></pre>
+
+    <fieldset class="group">
+      <legend>Progress</legend>
+      <progress id="transfer-progress" value="0" max="1"></progress>
+      <pre id="transfer-log" class="paper log"></pre>
+    </fieldset>
   </section>
 
-  <section id="panel-firmware" role="tabpanel" aria-labelledby="tab-firmware" hidden>
-    <div class="columns">
-      <div class="column">
-        <h2>Get an image</h2>
-        <label>Release
+  <section id="panel-firmware" role="tabpanel" aria-labelledby="tab-firmware" class="dialog" hidden>
+    <h1 class="dialog-title">Firmware</h1>
+
+    <div class="row">
+      <fieldset class="group">
+        <legend>Get an image</legend>
+        <label class="field">Release
           <input id="release-tag" value="latest" spellcheck="false" placeholder="latest, 0.91b, Nava 0.91b">
         </label>
-        <button id="do-download">Download</button>
+        <div class="buttons"><button id="do-download" class="btn">Download</button></div>
         <p class="muted">
           From the firmware repository's
           <a id="releases-link" href="https://github.com/jeanbrazeau/Nava-Firmware/releases" target="_blank" rel="noopener">releases page</a>.
@@ -131,40 +153,52 @@
           needs PlatformIO and a checkout — that stays in the <code>nava</code>
           command line tool.
         </p>
-      </div>
-      <div class="column">
-        <h2>Flash <small>image → Nava</small></h2>
-        <label>Image
+      </fieldset>
+
+      <fieldset class="group">
+        <legend>Flash: <span class="muted">image → Nava</span></legend>
+        <label class="field">Image
           <select id="firmware-file"><option value="">— download one, or drop a .syx —</option></select>
         </label>
-        <button id="do-inspect">Inspect</button>
-        <button id="do-flash" class="danger">Flash</button>
+        <div class="buttons">
+          <button id="do-inspect" class="btn"><u>I</u>nspect</button>
+          <button id="do-flash" class="btn">Flash</button>
+        </div>
         <p class="muted">
           Unit in bootloader mode first. A partial image leaves a unit that will
           not boot, so do not close the tab mid-flash.
         </p>
-      </div>
+      </fieldset>
     </div>
-    <progress id="firmware-progress" value="0" max="1"></progress>
-    <pre id="firmware-log" class="log"></pre>
+
+    <fieldset class="group">
+      <legend>Progress</legend>
+      <progress id="firmware-progress" value="0" max="1"></progress>
+      <pre id="firmware-log" class="paper log"></pre>
+    </fieldset>
   </section>
 
 </main>
 
-<footer class="bar">
-  <span id="status" class="mono"></span>
-  <span class="bar-right">
-    <button id="cancel" class="ghost" disabled>Stop</button>
+<footer class="statusbar">
+  <span id="status"></span>
+  <span class="status-right">
+    <button id="cancel" class="btn small" disabled>Stop</button>
     <a href="https://github.com/jeanbrazeau/nava-tools" target="_blank" rel="noopener">source</a>
   </span>
 </footer>
 
 <dialog id="confirm">
-  <h2 id="confirm-title"></h2>
-  <p id="confirm-body"></p>
+  <div class="alert">
+    <div class="alert-icon">!</div>
+    <div>
+      <h2 id="confirm-title"></h2>
+      <p id="confirm-body"></p>
+    </div>
+  </div>
   <div class="dialog-buttons">
-    <button id="confirm-cancel" class="ghost">Cancel</button>
-    <button id="confirm-ok" class="danger">Continue</button>
+    <button id="confirm-ok" class="btn default">Continue</button>
+    <button id="confirm-cancel" class="btn">Cancel</button>
   </div>
 </dialog>
 

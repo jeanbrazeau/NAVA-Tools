@@ -40,18 +40,20 @@ test('every element the app looks up by id exists in the page', () => {
   }
 });
 
-test('hiding a tab panel is not overridden by the section rule', () => {
-  // `section { display: flex }` outranks the user agent's `[hidden]` rule, so
-  // without an explicit override every panel renders at once and only the first
-  // tab is reachable. That is what shipped the first time this page was opened.
+test('the stylesheet cannot un-hide a hidden element', () => {
+  // Any rule setting `display` on a tag or class outranks the user agent's
+  // `[hidden]` rule, so `el.hidden = true` stops working and the element renders
+  // anyway. It has happened twice: `section` left every tab panel on screen at
+  // once, and `.alert` left the unsupported-browser warning up in a browser that
+  // is perfectly well supported. The global override is what makes `hidden`
+  // mean hidden regardless of what any component rule does.
   const css = readFileSync(join(WEB, 'style.css'), 'utf8');
-  if (/(^|\})\s*section\s*\{[^}]*display\s*:/m.test(css)) {
-    assert.match(
-      css,
-      /section\[hidden\]\s*\{[^}]*display\s*:\s*none/,
-      'style.css sets display on `section` but never turns it off for [hidden]',
-    );
-  }
+  assert.match(
+    css,
+    /\[hidden\]\s*\{[^}]*display\s*:\s*none\s*!important/,
+    'style.css needs `[hidden] { display: none !important }` — without it any ' +
+      'rule that sets display on a tag or class silently un-hides elements',
+  );
 });
 
 test('every tab button points at a panel that exists', () => {
