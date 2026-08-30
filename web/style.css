@@ -1,9 +1,10 @@
 /* Atari TOS / GEM.
  *
  * The rules that make it read as GEM rather than as "flat design with square
- * corners": there are exactly two colours, every edge is one hard black pixel,
- * nothing is rounded, nothing has a gradient, and the only depth cue is a solid
- * black drop shadow offset down-right. Selection is an invert, not a tint.
+ * corners": black and white do all the work and the greys only sit things
+ * behind others, every edge is one hard black pixel, nothing is rounded,
+ * nothing has a gradient, and the only depth cue is a solid black drop shadow
+ * offset down-right. Selection is an invert, not a tint.
  *
  * The desktop behind the dialogs is the 50% dither - a 2px checkerboard, which
  * is how a 1-bit display made grey and why GEM looks the way it does.
@@ -14,6 +15,7 @@
   --ink: #000;
   --paper: #fff;
   --face: #cfcfcf;   /* dialog fill */
+  --face-dim: #b3b3b3;  /* the unchosen tabs, one step back from the face */
   --shadow: 3px 3px 0 var(--ink);
   --font: ui-monospace, "SF Mono", Menlo, Consolas, "DejaVu Sans Mono", monospace;
   --dither: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='2' height='2' shape-rendering='crispEdges'%3E%3Crect width='1' height='1'/%3E%3Crect x='1' y='1' width='1' height='1'/%3E%3C/svg%3E");
@@ -46,12 +48,26 @@ body {
   font-smooth: never;
 }
 
+/* ---------- window title ---------- */
+
+/* The title bar spans the dialog, so it needs the padding pulled back off it. */
+.titlebar {
+  margin: -14px -16px 12px;
+  padding: 3px 10px;
+  background: var(--paper);
+  border-bottom: 1px solid var(--ink);
+  text-align: center;
+}
+.titlebar span {
+  letter-spacing: 0.14em;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
 /* ---------- the dialog header ---------- */
 
 /* Panel names on the left, MIDI accessories on the right, sharing one baseline
-   rule that runs the width of the dialog. The tabs read as folder tabs: the
-   active one inverts and joins the panel below it, which is the only cue needed
-   for which panel is showing. */
+   rule that runs the width of the dialog. */
 .shell-head {
   display: flex;
   align-items: flex-end;
@@ -60,30 +76,37 @@ body {
   border-bottom: 1px solid var(--ink);
 }
 
-/* The unchosen tabs are the inverted ones. The chosen tab is left the colour of
-   the dialog face, so it joins the panel below it through the gap in the
-   header rule - which is what a folder tab is - while the others stay pressed
-   back into the dark. */
+/* The chosen tab is left the colour of the dialog face, so it joins the panel
+   below it through the gap in the header rule - which is what a folder tab is.
+   The unchosen ones sit one step back in a dimmer grey: enough to read as
+   behind rather than beside, without the hard invert drawing the eye to
+   whichever tab you are not looking at. */
 .tabs { display: flex; gap: 4px; }
 .tabs button[role="tab"] {
-  background: var(--ink);
+  background: var(--face-dim);
   border: 1px solid var(--ink);
   border-bottom: none;
-  color: var(--paper);
+  color: var(--ink);
   font: inherit;
   letter-spacing: 0.08em;
   padding: 3px 16px;
   cursor: pointer;
+  /* An unchosen tab rests on the header rule, so the line reads as its closed
+     bottom edge. */
   position: relative;
-  top: 1px;
+  top: 0;
 }
 .tabs button[role="tab"]:hover:not([aria-selected="true"]) {
   background: var(--paper);
   color: var(--ink);
 }
+/* The chosen tab drops one pixel to cover the rule, which opens it into the
+   panel below. That break in the line - not the grey - is what says which tab
+   is chosen; one step of lightness alone is too quiet to carry it. */
 .tabs button[role="tab"][aria-selected="true"] {
   background: var(--face);
   color: var(--ink);
+  top: 1px;
 }
 
 .shell-status {
