@@ -478,6 +478,13 @@ td.cell.past {
   opacity: 0.4;
 }
 
+/* Editable cells. The pointer is the affordance rather than any decoration -
+   a chart where every cell announces itself stops reading as a chart - and the
+   hover outline is inset so it does not shift the grid by a pixel. */
+td.cell.editable { cursor: pointer; }
+td.cell.editable:hover { box-shadow: inset 0 0 0 2px var(--ink); }
+td.cell.editable.loud:hover { box-shadow: inset 0 0 0 2px var(--paper); }
+
 .chart-readouts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
 .readout {
   border: 1px solid var(--ink);

@@ -19,7 +19,15 @@
  * made a wall nobody could read, and the ext lanes are empty in most patterns.
  */
 
-import { INSTRUMENT_NAMES, NBR_EXT_TRACK, NBR_STEP, TOTAL_ACC, noteName } from './records.js';
+import {
+  INSTRUMENT_NAMES,
+  NBR_EXT_TRACK,
+  NBR_STEP,
+  TOTAL_ACC,
+  decodePattern,
+  noteName,
+} from './records.js';
+import * as edit from './edit.js';
 
 // The trigger output. Index 0 in the record, programmed per step like a voice,
 // but it fires a pulse at a jack rather than a sound - so it sits with ACCENT
@@ -51,8 +59,15 @@ const el = (tag, className, text) => {
 };
 
 /** The chart for one pattern: INST./EXT views over one 16-column grid, plus the
- *  step strip that shows whichever lane is picked. */
-export function patternChart(pattern, { config = null, title = '' } = {}) {
+ *  step strip that shows whichever lane is picked.
+ *
+ * Pass `payload` - the record's raw bytes - to make the cells editable. Each
+ * click writes into those bytes and the chart is redrawn from what they now
+ * say, rather than from what the click was supposed to do: if an edit and the
+ * decoder ever disagreed, the grid would show the disagreement instead of
+ * hiding it. `onEdit` fires after each change so the caller can mark the file
+ * unsaved. */
+export function patternChart(pattern, { config = null, title = '', payload = null, onEdit = null } = {}) {
   const root = el('div', 'chart');
   if (title) root.appendChild(el('div', 'chart-title', title));
 
@@ -88,80 +103,99 @@ export function patternChart(pattern, { config = null, title = '' } = {}) {
   /* Steps past the pattern's length are printed but struck out: the chart is
      always 16 wide, and a 12-step pattern has to look like a 12-step pattern
      rather than like four silent steps. */
-  const cellFor = (i, state, flam = false) => {
-    const cell = el('td', 'cell');
-    if (i % 4 === 0) cell.classList.add('beat');
+  const paintCell = (cell, i, state, flam = false) => {
+    cell.classList.remove('loud', 'soft', 'flam', 'past');
     if (i >= steps) {
       cell.classList.add('past');
-      return cell;
+      return;
     }
     if (state !== 'off') cell.classList.add(state === 'accent' ? 'loud' : 'soft');
     if (flam) cell.classList.add('flam');
+  };
+
+  const cellFor = (i, state, flam = false) => {
+    const cell = el('td', 'cell');
+    if (i % 4 === 0) cell.classList.add('beat');
+    paintCell(cell, i, state, flam);
     return cell;
+  };
+
+  const cells = new Map();   // lane key -> its 16 <td>s, for repainting after an edit
+
+  const addLane = (body, id, label, className, title, fill) => {
+    const row = el('tr', className);
+    row.tabIndex = 0;
+    if (title) row.title = title;
+    row.appendChild(el('th', 'chart-label', label));
+    const own = [];
+    for (let i = 0; i < NBR_STEP; i += 1) {
+      const cell = fill(i);
+      own.push(cell);
+      row.appendChild(cell);
+    }
+    rows.set(id, row);
+    cells.set(id, own);
+    body.appendChild(row);
+    return row;
   };
 
   const instBody = el('tbody');
   for (const [instrument, label] of CHART_ROWS) {
-    const row = el('tr', 'chart-row');
-    row.tabIndex = 0;
-    row.title = `${label} (${INSTRUMENT_NAMES[instrument]})`;
-    row.appendChild(el('th', 'chart-label', label));
-    for (let i = 0; i < NBR_STEP; i += 1) {
-      const step = i < steps ? pattern.step(instrument, i) : null;
-      row.appendChild(
-        cellFor(i, step && step.on ? pattern.level(instrument, i) : 'off', step?.flam && step.on),
-      );
-    }
-    rows.set(key('inst', instrument), row);
-    instBody.appendChild(row);
+    addLane(
+      instBody, key('inst', instrument), label, 'chart-row',
+      `${label} (${INSTRUMENT_NAMES[instrument]})`,
+      (i) => {
+        const step = i < steps ? pattern.step(instrument, i) : null;
+        return cellFor(i, step && step.on ? pattern.level(instrument, i) : 'off', step?.flam && step.on);
+      },
+    );
   }
 
   // TRIG and ACCENT are the two lanes that are not voices: one pulses the
   // trigger output, the other accents whatever the voices are doing. They are
   // programmed per step like everything else, so they belong on the chart -
   // below the kit, marked as not being part of it.
-  const trig = el('tr', 'chart-row chart-utility');
-  trig.tabIndex = 0;
-  trig.title = `TRIG output (${INSTRUMENT_NAMES[TRIG]})`;
-  trig.appendChild(el('th', 'chart-label', 'TRIG'));
-  for (let i = 0; i < NBR_STEP; i += 1) {
-    const step = i < steps ? pattern.step(TRIG, i) : null;
-    trig.appendChild(cellFor(i, step && step.on ? pattern.level(TRIG, i) : 'off'));
-  }
-  rows.set(key('inst', TRIG), trig);
-  instBody.appendChild(trig);
-
-  const accent = el('tr', 'chart-row chart-utility');
-  accent.appendChild(el('th', 'chart-label', 'ACCENT'));
-  for (let i = 0; i < NBR_STEP; i += 1) {
-    accent.appendChild(cellFor(i, (pattern.inst[TOTAL_ACC] >> i) & 1 ? 'accent' : 'off'));
-  }
-  instBody.appendChild(accent);
+  addLane(
+    instBody, key('inst', TRIG), 'TRIG', 'chart-row chart-utility',
+    `TRIG output (${INSTRUMENT_NAMES[TRIG]})`,
+    (i) => {
+      const step = i < steps ? pattern.step(TRIG, i) : null;
+      return cellFor(i, step && step.on ? pattern.level(TRIG, i) : 'off');
+    },
+  );
+  addLane(
+    instBody, key('acc', TOTAL_ACC), 'ACCENT', 'chart-row chart-utility',
+    'total accent - accents every voice on that step',
+    (i) => cellFor(i, (pattern.inst[TOTAL_ACC] >> i) & 1 ? 'accent' : 'off'),
+  );
 
   // All sixteen ext lanes, not just the used ones, for the same reason the
   // voices are all present: T7 should be in the same place in every pattern.
   const extBody = el('tbody');
   for (let track = 0; track < NBR_EXT_TRACK; track += 1) {
-    const row = el('tr', 'chart-row chart-ext');
-    row.tabIndex = 0;
     const note = config ? noteName(config.extNotes[track]) : null;
-    row.title = note ? `ext track ${track + 1}, note ${note}` : `ext track ${track + 1}`;
-    row.appendChild(el('th', 'chart-label', `T${track + 1}${note ? `  ${note}` : ''}`));
-    for (let i = 0; i < NBR_STEP; i += 1) {
+    addLane(
+      extBody, key('ext', track), `T${track + 1}${note ? `  ${note}` : ''}`, 'chart-row chart-ext',
+      note ? `ext track ${track + 1}, note ${note}` : `ext track ${track + 1}`,
       // The ext layer wraps on its own length, so a shorter ext loop repeats
       // against the kit rather than leaving the tail blank.
-      row.appendChild(cellFor(i, i < steps ? pattern.extStep(track, i % pattern.extSteps) : 'off'));
-    }
-    rows.set(key('ext', track), row);
-    extBody.appendChild(row);
+      (i) => cellFor(i, i < steps ? pattern.extStep(track, i % pattern.extSteps) : 'off'),
+    );
   }
 
   table.append(instBody, extBody);
   root.appendChild(table);
-  root.appendChild(readouts(pattern));
+  const readoutBox = readouts(pattern);
+  root.appendChild(readoutBox);
 
   const strip = el('div', 'step-strip');
   root.appendChild(strip);
+
+  // `pattern` is re-read from the record after every edit, so everything below
+  // draws from the bytes as they now are rather than from what a click was
+  // supposed to do. If an edit and the decoder ever disagreed, the grid would
+  // show the disagreement instead of hiding it.
+  let current = pattern;
 
   // One remembered lane per view, so switching tabs and back returns to what
   // was being looked at rather than resetting to the top.
@@ -180,14 +214,65 @@ export function patternChart(pattern, { config = null, title = '' } = {}) {
     for (const [id, row] of rows) {
       row.setAttribute('aria-selected', String(id === key(view, chosen[view])));
     }
-    drawStrip(strip, pattern, view, chosen[view], config);
+    drawStrip(strip, current, view, chosen[view], config);
   };
 
   const pick = (kind, index) => {
+    // ACCENT is editable but not a lane the step strip can show - it is not an
+    // instrument - so clicking it does not move the selection.
+    if (kind === 'acc') return;
     view = kind;
     chosen[kind] = index;
     paint();
   };
+
+  /** Redraw one lane from the record, after that record has changed. */
+  const repaint = (kind, index) => {
+    const own = cells.get(key(kind, index));
+    for (let i = 0; i < NBR_STEP; i += 1) {
+      if (kind === 'ext') {
+        paintCell(own[i], i, i < steps ? current.extStep(index, i % current.extSteps) : 'off');
+      } else if (kind === 'acc') {
+        paintCell(own[i], i, (current.inst[TOTAL_ACC] >> i) & 1 ? 'accent' : 'off');
+      } else {
+        const step = i < steps ? current.step(index, i) : null;
+        paintCell(
+          own[i], i,
+          step && step.on ? current.level(index, i) : 'off',
+          Boolean(step?.flam && step.on),
+        );
+      }
+    }
+  };
+
+  if (payload) {
+    root.classList.add('editable');
+    for (const [id, own] of cells) {
+      const [kind, raw] = id.split(':');
+      const index = Number(raw);
+      own.forEach((cell, i) => {
+        // Past the last step there is nothing to edit: the machine will never
+        // play it, so a click there would write a step that does not exist.
+        if (i >= steps) return;
+        cell.classList.add('editable');
+        cell.addEventListener('click', (event) => {
+          event.stopPropagation();
+          // Shift-click sets the flam flag, which is otherwise unreachable -
+          // the level cycle has nowhere to put a fourth state.
+          if (event.shiftKey && kind === 'inst') edit.toggleFlam(payload, index, i);
+          else if (kind === 'ext') edit.cycleExtStep(payload, index, i);
+          else if (kind === 'acc') edit.cycleAccent(payload, i);
+          else edit.cycleStep(payload, index, i);
+
+          current = decodePattern(payload);
+          repaint(kind, index);
+          if (kind !== 'acc') pick(kind, index);
+          else paint();
+          if (onEdit) onEdit();
+        });
+      });
+    }
+  }
 
   for (const [id, row] of rows) {
     const [kind, index] = id.split(':');
@@ -281,6 +366,7 @@ function laneName(view, index, config) {
   return found ? found[1] : INSTRUMENT_NAMES[index];
 }
 
-export function chartLegend() {
-  return 'loud  ■    soft  ▒    flam  ◤    beyond last step  ╱';
+export function chartLegend(editable = false) {
+  const marks = 'loud  ■    soft  ▒    flam  ◤    beyond last step  ╱';
+  return editable ? `${marks}      click a cell to cycle it, shift-click for flam` : marks;
 }

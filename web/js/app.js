@@ -310,7 +310,9 @@ function refreshFiles() {
     // already on the row's title and in the Detail pane.
     item.title = `${file.name} — ${file.summary()}`;
     const name = document.createElement('span');
-    name.textContent = file.name;
+    // A leading bullet is the whole marker: it survives the row inverting,
+    // which a colour would not.
+    name.textContent = file.edited ? `\u2022 ${file.name}` : file.name;
     item.append(name);
     item.addEventListener('click', () => selectFile(file));
     list.appendChild(item);
@@ -410,11 +412,15 @@ function showChart(file, item) {
     grid.patternChart(pattern, {
       config: file.config,
       title: `${file.name}  ›  ${item.label}`,
+      // The record's own bytes, edited in place. Everything downstream -
+      // Restore, Save - reads the items, so an edit is live the moment it lands.
+      payload: item.payload,
+      onEdit: () => markEdited(file),
     }),
   );
   chart.hidden = false;
   $('detail').hidden = true;
-  $('legend').textContent = grid.chartLegend();
+  $('legend').textContent = grid.chartLegend(true);
 }
 
 function summariseItem(item) {
@@ -460,6 +466,41 @@ function showDetail(text) {
   $('detail').hidden = false;
   $('chart').hidden = true;
 }
+
+/* ---------- editing ---------- */
+
+/* An edit changes the record in memory, never the file it came from. The list
+ * marks the file so it is obvious there is something to save, and the tab asks
+ * before closing on top of it. */
+function markEdited(file) {
+  file.edited = true;
+  refreshFiles();
+  status(`${file.name}: edited, not saved`);
+}
+
+function unsavedEdits() {
+  return state.files.some((f) => f.edited);
+}
+
+$('save-file').addEventListener('click', async () => {
+  const file = state.selectedFile;
+  if (!file || file.kind !== library.KIND_BACKUP) {
+    status('pick a backup under Files to save');
+    return;
+  }
+  // Rebuilt from the items rather than from the bytes the file arrived as:
+  // the items are what the edits went into, and what a Restore would send.
+  const bytes = protocol.joinMessages(
+    file.items.map((i) => protocol.encode(i.cmd, i.param, i.payload)),
+  );
+  const target = await pickSaveFile(file.name);
+  if (!target) return;
+  await writeFile(target, bytes);
+  file.edited = false;
+  file.bytes = bytes;
+  refreshFiles();
+  status(`wrote ${target.name} (${bytes.length} bytes)`);
+});
 
 /* ---------- drop / pick ---------- */
 
@@ -732,7 +773,7 @@ $('cancel').addEventListener('click', () => {
 // the tab asks - it is the one case where the browser's generic warning is the
 // right one.
 window.addEventListener('beforeunload', (event) => {
-  if (!state.busy) return;
+  if (!state.busy && !unsavedEdits()) return;
   event.preventDefault();
   event.returnValue = '';
 });

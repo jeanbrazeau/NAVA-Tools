@@ -60,6 +60,22 @@ velocities and the ext note map.
 A `.hex` dropped here is converted to a bootloader `.syx` on the way in, which is
 `nava hex2syx` without the install.
 
+**Editing.** Clicking a cell cycles it the way the panel does — off, soft, loud,
+off — and shift-clicking sets the flam flag, which the level cycle has nowhere
+to put. Steps past the last one are not editable: the machine will never play
+them.
+
+Edits write into the record's own bytes and touch nothing else. That is the
+whole design, not tidiness: a backup round-trips through firmware revisions only
+because records are carried verbatim, padding included, so rebuilding one from a
+decoded pattern would silently zero every field this decoder does not know
+about. `tests/web/edit.test.js` asserts it byte for byte — that the decoder
+reads back what was clicked, and that the reserved regions never move.
+
+Nothing is written to the file it came from. An edited file is marked in the
+list, Save… writes it out, and the tab asks before closing on top of unsaved
+work.
+
 **Transfer** dumps and restores. A dump asks where to save before it starts —
 a full backup takes minutes, and the browser will not open a file dialog that
 late.
