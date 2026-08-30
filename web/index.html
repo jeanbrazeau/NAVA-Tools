@@ -10,16 +10,6 @@
 </head>
 <body>
 
-<!-- The desktop bar: the application name and the accessory area. The panel
-     names are not here - they sit at the top of the dialog itself. -->
-<div class="menubar">
-  <span class="menu-title">NAVA</span>
-  <span class="menu-right">
-    <span id="connection" class="pill">MIDI not enabled</span>
-    <button id="enable-midi" class="btn default">Enable MIDI</button>
-  </span>
-</div>
-
 <div id="unsupported" class="alert" hidden>
   <div class="alert-icon">!</div>
   <div>
@@ -34,12 +24,21 @@
 <main>
 <div id="shell" class="dialog">
 
-  <nav class="tabs" role="tablist">
-    <button role="tab" aria-selected="true" aria-controls="panel-device" id="tab-device"><u>D</u>EVICE</button>
-    <button role="tab" aria-selected="false" aria-controls="panel-browse" id="tab-browse"><u>B</u>ROWSE</button>
-    <button role="tab" aria-selected="false" aria-controls="panel-transfer" id="tab-transfer"><u>T</u>RANSFER</button>
-    <button role="tab" aria-selected="false" aria-controls="panel-firmware" id="tab-firmware"><u>F</u>IRMWARE</button>
-  </nav>
+  <!-- The dialog's own header: panel names on the left, the MIDI accessory
+       area on the right. The tablist holds only tabs, so the status and the
+       button sit beside it rather than inside it. -->
+  <div class="shell-head">
+    <nav class="tabs" role="tablist">
+      <button role="tab" aria-selected="true" aria-controls="panel-device" id="tab-device"><u>D</u>EVICE</button>
+      <button role="tab" aria-selected="false" aria-controls="panel-browse" id="tab-browse"><u>B</u>ROWSE</button>
+      <button role="tab" aria-selected="false" aria-controls="panel-transfer" id="tab-transfer"><u>T</u>RANSFER</button>
+      <button role="tab" aria-selected="false" aria-controls="panel-firmware" id="tab-firmware"><u>F</u>IRMWARE</button>
+    </nav>
+    <div class="shell-status">
+      <span id="connection" class="pill">MIDI not enabled</span>
+      <button id="enable-midi" class="btn default">Enable MIDI</button>
+    </div>
+  </div>
 
   <div class="panels">
 

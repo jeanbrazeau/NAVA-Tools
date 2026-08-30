@@ -46,35 +46,21 @@ body {
   font-smooth: never;
 }
 
-/* ---------- menu bar ---------- */
+/* ---------- the dialog header ---------- */
 
-.menubar {
+/* Panel names on the left, MIDI accessories on the right, sharing one baseline
+   rule that runs the width of the dialog. The tabs read as folder tabs: the
+   active one inverts and joins the panel below it, which is the only cue needed
+   for which panel is showing. */
+.shell-head {
   display: flex;
-  align-items: center;
-  gap: 0;
-  background: var(--paper);
-  border-bottom: 1px solid var(--ink);
-  padding: 2px 8px;
-}
-
-.menu-title {
-  display: flex;
-  align-items: center;
-  padding: 3px 14px 3px 0;
-  font-weight: 700;
-  letter-spacing: 0.18em;
-}
-
-/* The panel names, at the top of the dialog rather than the top of the screen.
-   They read as a strip of GEM buttons sharing one baseline rule - the active
-   one inverts and joins the dialog below it, which is the only cue needed for
-   which panel is showing. */
-.tabs {
-  display: flex;
-  gap: 4px;
+  align-items: flex-end;
+  gap: 14px;
   margin: -2px -2px 14px;
   border-bottom: 1px solid var(--ink);
 }
+
+.tabs { display: flex; gap: 4px; }
 .tabs button[role="tab"] {
   background: var(--face);
   border: 1px solid var(--ink);
@@ -93,12 +79,12 @@ body {
   color: var(--paper);
 }
 
-.menu-right {
+.shell-status {
   margin-left: auto;
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 2px 4px;
+  gap: 10px;
+  padding-bottom: 5px;
 }
 
 .pill { white-space: nowrap; }
@@ -580,5 +566,9 @@ dialog::backdrop {
 @media (max-width: 760px) {
   .row { flex-direction: column; }
   .row > * { width: 100%; }
-  .menu-title { display: none; }
+  /* The tabs and the MIDI accessories stop fitting on one line well before the
+     panels do, so the header stacks first. */
+  .shell-head { flex-wrap: wrap; }
+  .shell-status { margin-left: 0; padding-bottom: 8px; }
+  .tabs { flex-wrap: wrap; }
 }
