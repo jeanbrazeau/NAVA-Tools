@@ -382,6 +382,34 @@ pre.log .bad::before { content: "! "; }
 }
 .chart-title { margin-bottom: 8px; padding-left: 2px; }
 
+/* INST. / EXT, the same folder-tab idiom as the window tabs one level up: the
+   chosen one takes the colour of the surface it opens onto - here the chart's
+   own paper - and the other sits a step back. */
+.chart-tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 8px;
+  border-bottom: 1px solid var(--ink);
+}
+.chart-tab {
+  background: var(--face-dim);
+  border: 1px solid var(--ink);
+  border-bottom: none;
+  color: var(--ink);
+  font: inherit;
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  padding: 1px 12px;
+  cursor: pointer;
+  position: relative;
+  top: 0;
+}
+.chart-tab:hover[aria-selected="false"] { background: var(--face); }
+.chart-tab[aria-selected="true"] {
+  background: var(--paper);
+  top: 1px;
+}
+
 table.chart-grid {
   border-collapse: collapse;
   table-layout: fixed;
@@ -415,7 +443,9 @@ table.chart-grid {
 .chart-row { cursor: pointer; }
 .chart-row[aria-selected="true"] .chart-label { background: var(--ink); color: var(--paper); }
 .chart-row:hover .chart-label { text-decoration: underline; }
-.chart-ext .chart-label, .chart-accent .chart-label { font-style: italic; }
+/* ACCENT is not a voice, so it does not look like one. The ext lanes have a
+   whole view to themselves now and need no marking inside it. */
+.chart-accent .chart-label { font-style: italic; }
 
 td.cell {
   border: 1px solid var(--ink);
