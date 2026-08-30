@@ -36,6 +36,7 @@ VOICE_DENSITY = [
     (4, 0.05),   # HCL
     (7, 0.04),   # CRH
     (6, 0.05),   # RID
+    (0, 0.09),   # TRG - the trigger output, sparse: it drives a jack, not a voice
 ]
 
 SCALES = [24, 24, 24, 12, 16, 32]  # 1/16 is the common case, so weight it

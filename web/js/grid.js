@@ -21,6 +21,11 @@
 
 import { INSTRUMENT_NAMES, NBR_EXT_TRACK, NBR_STEP, TOTAL_ACC, noteName } from './records.js';
 
+// The trigger output. Index 0 in the record, programmed per step like a voice,
+// but it fires a pulse at a jack rather than a sound - so it sits with ACCENT
+// under the kit rather than in it.
+const TRIG = 0;
+
 // Instrument index -> the name printed on the machine, in the order the chart
 // lists them. INSTRUMENT_NAMES holds the panel's abbreviations (CRH, HCL); the
 // chart spells them out, and that is what this column is.
@@ -111,9 +116,22 @@ export function patternChart(pattern, { config = null, title = '' } = {}) {
     instBody.appendChild(row);
   }
 
-  // ACCENT belongs with the voices: it accents the whole machine on that step
-  // rather than playing anything, which is why it is not in CHART_ROWS.
-  const accent = el('tr', 'chart-row chart-accent');
+  // TRIG and ACCENT are the two lanes that are not voices: one pulses the
+  // trigger output, the other accents whatever the voices are doing. They are
+  // programmed per step like everything else, so they belong on the chart -
+  // below the kit, marked as not being part of it.
+  const trig = el('tr', 'chart-row chart-utility');
+  trig.tabIndex = 0;
+  trig.title = `TRIG output (${INSTRUMENT_NAMES[TRIG]})`;
+  trig.appendChild(el('th', 'chart-label', 'TRIG'));
+  for (let i = 0; i < NBR_STEP; i += 1) {
+    const step = i < steps ? pattern.step(TRIG, i) : null;
+    trig.appendChild(cellFor(i, step && step.on ? pattern.level(TRIG, i) : 'off'));
+  }
+  rows.set(key('inst', TRIG), trig);
+  instBody.appendChild(trig);
+
+  const accent = el('tr', 'chart-row chart-utility');
   accent.appendChild(el('th', 'chart-label', 'ACCENT'));
   for (let i = 0; i < NBR_STEP; i += 1) {
     accent.appendChild(cellFor(i, (pattern.inst[TOTAL_ACC] >> i) & 1 ? 'accent' : 'off'));
@@ -258,6 +276,7 @@ function laneName(view, index, config) {
     const note = config ? `  ${noteName(config.extNotes[index])}` : '';
     return `T${index + 1}${note}`;
   }
+  if (index === TRIG) return 'TRIG';
   const found = CHART_ROWS.find(([i]) => i === index);
   return found ? found[1] : INSTRUMENT_NAMES[index];
 }

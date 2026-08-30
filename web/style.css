@@ -443,9 +443,10 @@ table.chart-grid {
 .chart-row { cursor: pointer; }
 .chart-row[aria-selected="true"] .chart-label { background: var(--ink); color: var(--paper); }
 .chart-row:hover .chart-label { text-decoration: underline; }
-/* ACCENT is not a voice, so it does not look like one. The ext lanes have a
-   whole view to themselves now and need no marking inside it. */
-.chart-accent .chart-label { font-style: italic; }
+/* TRIG and ACCENT are not voices, so they do not look like ones. The ext lanes
+   have a whole view to themselves now and need no marking inside it. */
+.chart-utility .chart-label { font-style: italic; }
+.chart-utility:first-of-type td.cell { border-top-width: 2px; }
 
 td.cell {
   border: 1px solid var(--ink);
