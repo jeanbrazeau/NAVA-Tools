@@ -1,7 +1,7 @@
 """Guards the packaging metadata.
 
-app.tcss shipped missing from the wheel once already. An editable install cannot
-reveal that - the file is still sitting in the source tree, so the TUI works
+A data file shipped missing from the wheel once already. An editable install
+cannot reveal that - the file is still sitting in the source tree, so it works
 locally and dies only for someone who installed it properly. These check the
 declaration instead of waiting for a bug report.
 """
@@ -53,7 +53,7 @@ def test_every_package_asset_is_declared(pyproject):
             f"the wheel: {assets}"
         )
         return
-    # Keys are package names ("nava.tui"); turn them into path prefixes.
+    # Keys are package names ("nava.sub"); turn them into path prefixes.
     patterns = []
     for package, globs in declared.items():
         prefix = package.split(".", 1)[1].replace(".", os.sep) if "." in package else ""
@@ -67,26 +67,18 @@ def test_every_package_asset_is_declared(pyproject):
         )
 
 
-def test_the_stylesheet_exists_where_the_app_expects_it():
-    """CSS_PATH is resolved relative to the module, so the name must match."""
-    from nava.tui.app import NavaApp
-
-    assert NavaApp.CSS_PATH == "app.tcss"
-    assert os.path.exists(os.path.join(PACKAGE_DIR, "tui", "app.tcss"))
-
-
 def test_console_script_target_is_importable(pyproject):
     module, _, function = pyproject["project"]["scripts"]["nava"].partition(":")
     imported = __import__(module, fromlist=[function])
     assert callable(getattr(imported, function))
 
 
-def test_tui_is_an_optional_extra(pyproject):
-    """Everything except `nava tui` must work without textual installed, so
-    textual must not be a hard dependency."""
-    required = " ".join(pyproject["project"]["dependencies"])
-    assert "textual" not in required
-    assert any("textual" in dep for dep in pyproject["project"]["optional-dependencies"]["tui"])
+def test_the_web_app_is_not_part_of_the_python_package(pyproject):
+    """web/ is deployed to Pages, not installed. Sweeping it into the wheel
+    would ship a copy that no longer matches what the site serves."""
+    included = pyproject["tool"]["setuptools"]["packages"]["find"]["include"]
+    assert included == ["nava*"]
+    assert not os.path.exists(os.path.join(PACKAGE_DIR, "web"))
 
 
 def test_lockfile_is_committed():

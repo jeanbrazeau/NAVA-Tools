@@ -79,8 +79,9 @@ def test_named_tag_is_requested_by_tag(monkeypatch):
 
 def test_a_tag_with_a_space_is_encoded_not_pasted(monkeypatch):
     """http.client rejects a space in the path before sending anything, and the
-    exception is neither HTTPError nor URLError - which took the TUI down with a
-    traceback. The request has to be made, so it can 404 like any other miss."""
+    exception is neither HTTPError nor URLError - so it escaped as a traceback
+    rather than as a miss. The request has to be made, so it can 404 like any
+    other miss."""
     seen = install_urlopen(
         monkeypatch, lambda url, h: FakeResponse(json.dumps(RELEASE_JSON).encode())
     )
@@ -117,7 +118,7 @@ def test_an_unknown_tag_names_what_was_typed(monkeypatch):
 def test_an_unusable_url_does_not_raise_out_of_band(monkeypatch):
     """NAVA_REPO reaches the path unencoded, so http.client.InvalidURL is still
     possible - and it is neither HTTPError nor URLError, so it has to be caught
-    by name or it escapes as itself and kills the TUI's worker."""
+    by name or it escapes as itself instead of as a release error."""
 
     def handler(url, headers):
         raise http.client.InvalidURL("URL can't contain control characters")

@@ -96,8 +96,8 @@ def _get_json(url: str):
     except http.client.InvalidURL as exc:
         # Reachable through NAVA_REPO, and through anything else that lands in a
         # path segment: http.client rejects spaces and control characters with an
-        # exception that is neither HTTPError nor URLError, so uncaught it kills
-        # the TUI's worker thread rather than printing a line in its log.
+        # exception that is neither HTTPError nor URLError, so uncaught it
+        # escapes as itself rather than as a release error the caller reports.
         raise ReleaseError(f"not a usable GitHub URL: {url!r} ({exc})") from exc
     except urllib.error.HTTPError as exc:
         if exc.code == 404:

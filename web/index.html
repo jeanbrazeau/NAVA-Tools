@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>nava — back up, browse and flash the Nava over MIDI</title>
+<meta name="description" content="Browser tool for the Nava TR-909 replica: back up patterns, restore them, and flash firmware over Web MIDI. Nothing to install.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect width='16' height='16' rx='3' fill='%23111'/><rect x='3' y='4' width='2' height='8' fill='%23ff7a1a'/><rect x='7' y='4' width='2' height='8' fill='%23ff7a1a'/><rect x='11' y='4' width='2' height='8' fill='%23555'/></svg>">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="bar">
+  <h1>nava</h1>
+  <p class="tagline">back up, browse and flash the Nava — in the browser</p>
+  <div class="bar-right">
+    <span id="connection" class="pill pill-idle">MIDI not enabled</span>
+    <button id="enable-midi" class="primary">Enable MIDI</button>
+  </div>
+</header>
+
+<div id="unsupported" class="banner" hidden>
+  <strong>This browser cannot talk to the unit.</strong>
+  Web MIDI needs a Chromium-based browser — Chrome, Edge, Opera, Brave, Arc,
+  Helium, Vivaldi and the rest of them. Safari and Firefox have no
+  implementation, so ports will not appear. Browsing and decoding a
+  <code>.syx</code> file works here regardless.
+</div>
+
+<nav class="tabs" role="tablist">
+  <button role="tab" aria-selected="true" aria-controls="panel-device" id="tab-device">Device</button>
+  <button role="tab" aria-selected="false" aria-controls="panel-browse" id="tab-browse">Browse</button>
+  <button role="tab" aria-selected="false" aria-controls="panel-transfer" id="tab-transfer">Transfer</button>
+  <button role="tab" aria-selected="false" aria-controls="panel-firmware" id="tab-firmware">Firmware</button>
+</nav>
+
+<main>
+
+  <section id="panel-device" role="tabpanel" aria-labelledby="tab-device">
+    <p class="hint">
+      Pick the MIDI out the Nava listens on and the MIDI in it answers on. They
+      are remembered by name, not by position — an index moves whenever a USB
+      device is added or removed.
+    </p>
+    <div class="columns">
+      <div class="column">
+        <h2>Output <small>host → Nava</small></h2>
+        <ul id="out-ports" class="ports"></ul>
+      </div>
+      <div class="column">
+        <h2>Input <small>Nava → host</small></h2>
+        <ul id="in-ports" class="ports"></ul>
+      </div>
+    </div>
+    <details class="note">
+      <summary>What the unit has to be doing</summary>
+      <p>
+        <strong>Backup and restore</strong> need the unit stopped and on the SysEx
+        config page: <kbd>SHIFT</kbd> + <kbd>TEMPO</kbd> to <code>type / select</code>.
+        That is where the firmware listens; anywhere else, requests are ignored.
+        Entering the page flushes pending edits to EEPROM and leaving it reloads
+        the current bank, so a restore takes effect without a power cycle.
+      </p>
+      <p>
+        <strong>Flashing</strong> needs the unit in bootloader mode: stop the
+        sequencer, <kbd>SHIFT</kbd> + <kbd>TEMPO</kbd> to the <code>BOOTLOADER</code>
+        page, then <kbd>SHIFT</kbd> + encoder. The panel goes dead afterwards — it
+        is no longer running the firmware — and the unit restarts on its own when
+        the transfer finishes.
+      </p>
+    </details>
+  </section>
+
+  <section id="panel-browse" role="tabpanel" aria-labelledby="tab-browse" hidden>
+    <div id="dropzone" class="dropzone">
+      <p>Drop <code>.syx</code> files here, or <button id="pick-files" class="link">choose files</button>.</p>
+      <p class="muted">Nothing is uploaded. Files are read in the tab and stay there.</p>
+      <input id="file-input" type="file" accept=".syx,.SYX,.hex,.HEX" multiple hidden>
+    </div>
+    <div class="columns browse">
+      <div class="column narrow">
+        <h2>Files</h2>
+        <ul id="files" class="ports"></ul>
+      </div>
+      <div class="column narrow">
+        <h2>Contents</h2>
+        <ul id="items" class="ports"></ul>
+      </div>
+      <div class="column grow">
+        <h2>Detail</h2>
+        <pre id="detail" class="grid">Load a .syx to see what is in it.</pre>
+        <p id="legend" class="muted mono"></p>
+      </div>
+    </div>
+  </section>
+
+  <section id="panel-transfer" role="tabpanel" aria-labelledby="tab-transfer" hidden>
+    <div class="columns">
+      <div class="column">
+        <h2>Dump <small>Nava → file</small></h2>
+        <label>Patterns <input id="dump-patterns" value="all" spellcheck="false" placeholder="all, C, A1-A16"></label>
+        <label>Tracks <input id="dump-tracks" value="all" spellcheck="false" placeholder="all, 1-4"></label>
+        <label class="check"><input id="dump-config" type="checkbox" checked> Config record</label>
+        <button id="do-dump" class="primary">Dump</button>
+      </div>
+      <div class="column">
+        <h2>Restore <small>file → Nava</small></h2>
+        <label>Backup
+          <select id="restore-file"><option value="">— load a .syx under Browse —</option></select>
+        </label>
+        <p class="muted">Overwrites the patterns, tracks and setup the file names. Not reversible.</p>
+        <button id="do-restore" class="danger">Restore</button>
+      </div>
+    </div>
+    <progress id="transfer-progress" value="0" max="1"></progress>
+    <pre id="transfer-log" class="log"></pre>
+  </section>
+
+  <section id="panel-firmware" role="tabpanel" aria-labelledby="tab-firmware" hidden>
+    <div class="columns">
+      <div class="column">
+        <h2>Get an image</h2>
+        <label>Release
+          <input id="release-tag" value="latest" spellcheck="false" placeholder="latest, 0.91b, Nava 0.91b">
+        </label>
+        <button id="do-download">Download</button>
+        <p class="muted">
+          From the firmware repository's
+          <a id="releases-link" href="https://github.com/jeanbrazeau/Nava-Firmware/releases" target="_blank" rel="noopener">releases page</a>.
+          A tag, or the release title as the page shows it. Building from source
+          needs PlatformIO and a checkout — that stays in the <code>nava</code>
+          command line tool.
+        </p>
+      </div>
+      <div class="column">
+        <h2>Flash <small>image → Nava</small></h2>
+        <label>Image
+          <select id="firmware-file"><option value="">— download one, or drop a .syx —</option></select>
+        </label>
+        <button id="do-inspect">Inspect</button>
+        <button id="do-flash" class="danger">Flash</button>
+        <p class="muted">
+          Unit in bootloader mode first. A partial image leaves a unit that will
+          not boot, so do not close the tab mid-flash.
+        </p>
+      </div>
+    </div>
+    <progress id="firmware-progress" value="0" max="1"></progress>
+    <pre id="firmware-log" class="log"></pre>
+  </section>
+
+</main>
+
+<footer class="bar">
+  <span id="status" class="mono"></span>
+  <span class="bar-right">
+    <button id="cancel" class="ghost" disabled>Stop</button>
+    <a href="https://github.com/jeanbrazeau/nava-tools" target="_blank" rel="noopener">source</a>
+  </span>
+</footer>
+
+<dialog id="confirm">
+  <h2 id="confirm-title"></h2>
+  <p id="confirm-body"></p>
+  <div class="dialog-buttons">
+    <button id="confirm-cancel" class="ghost">Cancel</button>
+    <button id="confirm-ok" class="danger">Continue</button>
+  </div>
+</dialog>
+
+<script type="module" src="js/app.js"></script>
+</body>
+</html>

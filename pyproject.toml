@@ -18,9 +18,6 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# The TUI is an extra so `hex2syx`, `inspect` and `show` stay installable
-# somewhere you would rather not pull in a terminal framework.
-tui = ["textual>=0.80"]
 build = ["platformio>=6.1"]
 
 [project.urls]
@@ -37,22 +34,14 @@ nava = "nava.cli:main"
 # an extra, so nothing a user installs drags the test suite along.
 dev = [
     "pytest>=7",
-    "pytest-asyncio>=0.23",
-    "textual>=0.80",
 ]
 
+# The web app is not installed with the package: it is deployed to GitHub Pages
+# from web/ and served from there. Shipping a copy in the wheel would put a
+# second, staler version of the same tool on people's disks.
 [tool.setuptools.packages.find]
 include = ["nava*"]
-
-# app.tcss is data, not a module, and setuptools does not pick it up from
-# `packages.find` alone. Without this the wheel installs a TUI that dies on
-# startup looking for its stylesheet - which an editable install never reveals,
-# because the file is still sitting in the source tree.
-[tool.setuptools.package-data]
-"nava.tui" = ["*.tcss"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = [".", "tests"]
-asyncio_mode = "auto"
-asyncio_default_fixture_loop_scope = "function"

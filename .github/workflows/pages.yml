@@ -1,0 +1,55 @@
+# Publishes web/ to GitHub Pages.
+#
+# One-time setup in the repository: Settings -> Pages -> Source -> "GitHub
+# Actions". Without that the workflow runs and the deploy step fails, because
+# the branch-based Pages source ignores artifacts entirely.
+#
+# There is no build step. web/ is plain ES modules and one stylesheet, uploaded
+# as it sits in the repository, so what the site serves is what is committed -
+# no bundler output to diverge from the source, and `python3 -m http.server` in
+# web/ is an exact local copy of production.
+#
+# Deploys only after Tests passes on master: the site talks to a bootloader, and
+# a page that fails its own protocol vectors should not be the one people reach.
+
+name: Pages
+
+on:
+  workflow_run:
+    workflows: ["Tests"]
+    branches: [master]
+    types: [completed]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One deploy at a time, and never cancel one half way: an interrupted deploy
+# leaves the site on a mixed set of files.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      # The commit that passed, not whatever master has moved on to since.
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: web
+
+      - id: deployment
+        uses: actions/deploy-pages@v4
