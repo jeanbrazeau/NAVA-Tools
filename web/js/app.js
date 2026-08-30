@@ -12,6 +12,7 @@
 
 import * as protocol from './protocol.js';
 import * as bootloader from './bootloader.js';
+import * as grid from './grid.js';
 import * as ihex from './ihex.js';
 import * as library from './library.js';
 import * as midi from './midi.js';
@@ -386,8 +387,34 @@ function refreshItems() {
   }
 
   const chosen = state.selectedItem;
-  $('legend').textContent = chosen?.cmd === protocol.NAVA_PTRN_DMP ? render.legend() : '';
-  showDetail(chosen ? describeItem(file, chosen) : describeFile(file));
+  if (chosen?.cmd === protocol.NAVA_PTRN_DMP) {
+    showChart(file, chosen);
+  } else {
+    $('legend').textContent = '';
+    showDetail(chosen ? describeItem(file, chosen) : describeFile(file));
+  }
+}
+
+/* A pattern gets the machine's step chart; everything else is text. The two
+ * views swap rather than stack, so the pane is never both. */
+function showChart(file, item) {
+  let pattern;
+  try {
+    pattern = item.decoded();
+  } catch (error) {
+    showDetail(`${item.label}: ${error.message ?? error}`);
+    return;
+  }
+  const chart = $('chart');
+  chart.replaceChildren(
+    grid.patternChart(pattern, {
+      config: file.config,
+      title: `${file.name}  ›  ${item.label}`,
+    }),
+  );
+  chart.hidden = false;
+  $('detail').hidden = true;
+  $('legend').textContent = grid.chartLegend();
 }
 
 function summariseItem(item) {
@@ -421,12 +448,7 @@ function describeItem(file, item) {
   } catch (error) {
     return `${item.label}: ${error.message ?? error}`;
   }
-  if (item.cmd === protocol.NAVA_PTRN_DMP) {
-    return render.patternText(decoded, {
-      config: file.config,
-      title: `${file.name}  ›  ${item.label}`,
-    });
-  }
+  // Patterns never reach here - they get the chart in showChart.
   if (item.cmd === protocol.NAVA_TRACK_DMP) {
     return render.trackLines(decoded, item.param).join('\n');
   }
@@ -435,6 +457,8 @@ function describeItem(file, item) {
 
 function showDetail(text) {
   $('detail').textContent = text;
+  $('detail').hidden = false;
+  $('chart').hidden = true;
 }
 
 /* ---------- drop / pick ---------- */
