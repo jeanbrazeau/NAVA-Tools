@@ -60,12 +60,16 @@ body {
   border-bottom: 1px solid var(--ink);
 }
 
+/* The unchosen tabs are the inverted ones. The chosen tab is left the colour of
+   the dialog face, so it joins the panel below it through the gap in the
+   header rule - which is what a folder tab is - while the others stay pressed
+   back into the dark. */
 .tabs { display: flex; gap: 4px; }
 .tabs button[role="tab"] {
-  background: var(--face);
+  background: var(--ink);
   border: 1px solid var(--ink);
   border-bottom: none;
-  color: var(--ink);
+  color: var(--paper);
   font: inherit;
   letter-spacing: 0.08em;
   padding: 3px 16px;
@@ -73,10 +77,13 @@ body {
   position: relative;
   top: 1px;
 }
-.tabs button[role="tab"]:hover { background: var(--paper); }
+.tabs button[role="tab"]:hover:not([aria-selected="true"]) {
+  background: var(--paper);
+  color: var(--ink);
+}
 .tabs button[role="tab"][aria-selected="true"] {
-  background: var(--ink);
-  color: var(--paper);
+  background: var(--face);
+  color: var(--ink);
 }
 
 .shell-status {
