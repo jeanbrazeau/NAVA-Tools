@@ -1,8 +1,8 @@
 """Compiling the firmware and turning the result into a bootloader `.syx`.
 
-Shared by `nava build` and the TUI's Firmware tab so the two cannot drift: the
-same environment, the same `.hex` -> `.syx` conversion, the same diagnosis when
-PlatformIO is missing.
+This is the one thing the web app cannot do - a browser has no toolchain - so
+`nava build` is why the command line tool still exists for anyone with a
+firmware checkout.
 
 Building needs two things an installed `nava` does not have: a source checkout
 with `platformio.ini` in it, and PlatformIO itself. `checkout_root()` reports

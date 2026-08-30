@@ -1,8 +1,8 @@
 """The backup / restore / flash loops, independent of how they are driven.
 
-Both front ends call these. Duplicating the retry-and-acknowledge logic in the
-TUI would let it drift from the CLI, and the difference would only ever show up
-mid-transfer against real hardware.
+The web app runs the same loops in web/js/transfer.js, against the same fake
+device: a difference in the retry-and-acknowledge logic would otherwise only
+ever show up mid-transfer against real hardware.
 
 `progress` is called with (done, total, label) after each item. `should_stop`, if
 given, is polled between items so a UI can cancel; it is checked BETWEEN items

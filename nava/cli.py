@@ -43,8 +43,8 @@ class CommandError(Exception):
     """A user-facing failure; reported without a traceback."""
 
 
-# Build support lives in building.py, shared with the TUI. Re-exported because
-# both names were part of this module's surface before the split.
+# Build support lives in building.py. Re-exported because both names were part
+# of this module's surface before the split.
 repo_root = building.repo_root
 find_pio = building.find_pio
 
@@ -332,16 +332,6 @@ def cmd_show(args) -> int:
     return 0
 
 
-def cmd_tui(args) -> int:
-    try:
-        from .tui.app import run
-    except ImportError as exc:
-        raise CommandError(
-            f"the TUI needs textual: pip install textual\n  ({exc})"
-        ) from exc
-    return run(directory=args.directory)
-
-
 def _summarise(numbers: list[int]) -> str:
     """Contiguous runs as A1-A16, so a 128-pattern backup prints on one line."""
     runs = []
@@ -443,10 +433,6 @@ def build_parser() -> argparse.ArgumentParser:
     p_show.add_argument("file")
     p_show.add_argument("item", help="a pattern (A1), a track (track 3) or 'config'")
     p_show.set_defaults(func=cmd_show)
-
-    p_tui = sub.add_parser("tui", help="browse backups and drive the device interactively")
-    p_tui.add_argument("-d", "--directory", help="directory of .syx files to browse")
-    p_tui.set_defaults(func=cmd_tui)
 
     return parser
 

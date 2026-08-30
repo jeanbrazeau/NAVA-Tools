@@ -1,93 +1,31 @@
 # `nava` — build, flash and back up the Nava
 
-One command line tool for the three things that need a computer: turning a build
-into something the bootloader accepts, pushing it over MIDI, and getting the
-patterns off the machine before doing either.
+Two front ends over one protocol: a **web app** that needs nothing installed, and
+a command line tool for the parts a browser cannot do.
 
-## Install
+**→ [jeanbrazeau.github.io/nava-tools](https://jeanbrazeau.github.io/nava-tools/)**
 
-With [uv](https://docs.astral.sh/uv/), from anywhere — no clone needed:
+Open it, allow MIDI, and back up your patterns, restore them, or flash firmware.
+Nothing is uploaded: the page reads the `.syx` in the tab and talks to the unit
+over Web MIDI, and the only thing it ever fetches is the firmware image, straight
+from the releases page.
 
-```bash
-uv tool install "git+https://github.com/jeanbrazeau/nava-tools[tui]"
-nava --help
-```
+It needs a **Chromium-based browser** — Chrome, Edge, Opera, Brave, Arc, Helium,
+Vivaldi. Web MIDI is a Chromium API; Safari and Firefox have no implementation,
+so ports never appear there. The page feature-detects rather than sniffing the
+user agent, so it says so plainly in whatever you open it in, and browsing and
+decoding a backup works either way.
 
-That puts `nava` on your PATH in its own isolated environment. Drop `[tui]` if you
-only want the command line.
+## The web app
 
-A bare URL resolves to the repository's **default branch**. To install from a
-branch or tag that has not been merged, name it:
+Four panels, in the order the work usually happens.
 
-```bash
-uv tool install "git+https://github.com/jeanbrazeau/nava-tools@BRANCH[tui]"
-```
+**Device** picks the MIDI in and out ports. They are remembered by name in the
+browser, not by index — an index moves whenever a USB device is added or
+removed, and a remembered index would silently point at a different device.
 
-To update or remove it:
-
-```bash
-uv tool upgrade nava-tools
-uv tool uninstall nava-tools
-```
-
-Run it once without installing anything:
-
-```bash
-uvx --from "git+https://github.com/jeanbrazeau/nava-tools[tui]" nava tui
-```
-
-From a clone, working on the tools themselves:
-
-```bash
-uv sync                              # creates .venv from uv.lock
-uv run nava tui
-uv run pytest
-```
-
-`uv sync` installs the `dev` dependency group automatically, so the tests are
-ready without naming an extra.
-
-With pip instead:
-
-```bash
-pip install -e ".[tui]"
-pip install -e . --group dev         # tests; needs pip >= 25.1
-```
-
-`nava hex2syx`, `nava inspect` and `nava show` work with no MIDI backend
-installed; the commands that touch a port need `mido` and `python-rtmidi`, and
-`nava tui` needs `textual` (the `tui` extra).
-
-## Commands
-
-| | |
-|---|---|
-| `nava tui` | interactive: browse backups, pick ports, dump, restore, download or build firmware, flash |
-| `nava ports` | list MIDI inputs and outputs |
-| `nava build` | compile with PlatformIO and emit a `.syx` |
-| `nava hex2syx FILE.hex` | convert an existing `.hex` |
-| `nava flash FILE.syx` | send firmware to a unit in bootloader mode |
-| `nava backup` | read patterns, tracks and setup off the unit |
-| `nava restore FILE.syx` | write a backup back |
-| `nava inspect FILE.syx` | describe a file without a device attached |
-| `nava show FILE.syx A1` | print one decoded pattern, track or the config |
-
-## The TUI
-
-```bash
-nava tui                 # browses the current directory
-nava tui -d ~/nava-backups
-```
-
-Four tabs, in the order the work usually happens.
-
-**Device** picks the MIDI in and out ports. They are remembered by name in
-`~/.config/nava/tui.json`, not by index — an index moves whenever a USB device is
-added or removed, and a remembered index would silently point at a different
-device.
-
-**Browse** lists the `.syx` files in a directory, what each one holds, and decodes
-whatever you select. Patterns render as a step grid:
+**Browse** takes `.syx` files dropped on it, says what each one holds, and
+decodes whatever you select. Patterns render as a step grid:
 
 ```
 backup-2026-07-29.syx  ›  C3
@@ -114,47 +52,87 @@ repeating against the kit, which is what `extStepCount` does on the hardware.
 Tracks show their pattern sequence; the config record shows tempo, sync, channels,
 velocities and the ext note map.
 
-**Transfer** dumps and restores.
+A `.hex` dropped here is converted to a bootloader `.syx` on the way in, which is
+`nava hex2syx` without the install.
 
-**Firmware** gets an image and sends it. Two ways to get one, because most
-installs can only use the first:
+**Transfer** dumps and restores. A dump asks where to save before it starts —
+a full backup takes minutes, and the browser will not open a file dialog that
+late.
 
-- **Download** fetches a published build from the
-  [releases page](https://github.com/jeanbrazeau/Nava-Firmware/releases). The tag
-  box takes `latest`, a tag such as `0.91b`, or the release title as the page
-  shows it (`Nava 0.91b`) — that is what gets copied, so it is matched against
-  the release titles when no tag matches. The file lands in the
-  browse directory named for the release — `nava-0.91b.syx` — so two releases
-  cannot overwrite each other, and it shows up under Browse afterwards.
-- **Build** compiles the checkout with PlatformIO and converts the result. This
-  needs `platformio.ini` next to the package, so it only works when `nava` is run
-  from a clone; an installed copy says so instead of offering it. PlatformIO's
-  output is streamed into the log as it compiles.
-
-Either one fills in the file box, so the flow is Download (or Build) → Inspect →
-Flash without typing a path.
+**Firmware** downloads a published build and sends it. The tag box takes
+`latest`, a tag such as `0.91b`, or the release title as the page shows it
+(`Nava 0.91b`) — that is what gets copied, so it is matched against the release
+titles when no tag matches. Add `?repo=owner/name` to the URL to point it at a
+fork; that is the browser's `NAVA_REPO`, and a link carries it.
 
 Transfer and Firmware both name what they are about to overwrite and ask first —
 neither is reversible, and the unit gives no confirmation of its own. A firmware
-image and a backup are told apart by their SysEx header, so the TUI refuses to
+image and a backup are told apart by their SysEx header, so the page refuses to
 flash a backup or restore a firmware image.
 
-`esc` stops a transfer between items, never mid-item, so a cancel cannot leave a
-half-written record on the device.
+Stop cancels between items, never mid-item, so a cancel cannot leave a
+half-written record on the device. A flash is paced by scheduled MIDI timestamps
+rather than by a timer, so switching tabs mid-flash does not stall it.
 
-## Where the firmware lives
+## The command line tool
 
-This repository is the host side only. The firmware itself, its simulator tests
-and its release machinery are in
-[jeanbrazeau/Nava-Firmware](https://github.com/jeanbrazeau/Nava-Firmware): the
-version number lives in one file there (`downtown-solutions_firmware/version.h`),
-`scripts/release.py` in that repository cuts a tag from it, and that repository's
-CI builds the `.syx` this tool downloads and flashes.
+What the browser cannot do is compile: `nava build` shells out to PlatformIO
+against a firmware checkout. Everything else the web app does, the CLI also does,
+for scripting or for a machine where opening a browser is not the point.
 
-Two commands here still want a firmware checkout, and say so rather than failing
-obscurely when there is none: `nava build` shells out to PlatformIO against a
-`platformio.ini`, and the TUI's Build button is offered only when it finds one.
-Everything else — flash, backup, restore, inspect, show — needs no source at all.
+With [uv](https://docs.astral.sh/uv/), from anywhere — no clone needed:
+
+```bash
+uv tool install "git+https://github.com/jeanbrazeau/nava-tools"
+nava --help
+```
+
+That puts `nava` on your PATH in its own isolated environment. A bare URL resolves
+to the repository's **default branch**; to install from a branch or tag that has
+not been merged, name it:
+
+```bash
+uv tool install "git+https://github.com/jeanbrazeau/nava-tools@BRANCH"
+uv tool upgrade nava-tools
+uv tool uninstall nava-tools
+```
+
+Run it once without installing anything:
+
+```bash
+uvx --from "git+https://github.com/jeanbrazeau/nava-tools" nava ports
+```
+
+From a clone, working on the tools themselves:
+
+```bash
+uv sync                              # creates .venv from uv.lock
+uv run nava ports
+uv run pytest
+node --test "tests/web/*.test.js"    # the web app's suite; no install needed
+```
+
+`uv sync` installs the `dev` dependency group automatically, so the tests are
+ready without naming an extra. With pip instead:
+
+```bash
+pip install -e .
+pip install -e . --group dev         # tests; needs pip >= 25.1
+```
+
+`nava hex2syx`, `nava inspect` and `nava show` work with no MIDI backend
+installed; the commands that touch a port need `mido` and `python-rtmidi`.
+
+| | |
+|---|---|
+| `nava ports` | list MIDI inputs and outputs |
+| `nava build` | compile with PlatformIO and emit a `.syx` |
+| `nava hex2syx FILE.hex` | convert an existing `.hex` |
+| `nava flash FILE.syx` | send firmware to a unit in bootloader mode |
+| `nava backup` | read patterns, tracks and setup off the unit |
+| `nava restore FILE.syx` | write a backup back |
+| `nava inspect FILE.syx` | describe a `.syx` without a device attached |
+| `nava show FILE.syx A1` | print one decoded pattern, track or the config |
 
 ### Finding the port
 
@@ -207,6 +185,19 @@ ranges (`A1-A16`) and lists (`A1,B3,C`). `--tracks` takes `all`, `1`, `1-4`.
 Entering the SysEx page flushes pending edits to EEPROM, and leaving it reloads
 the current bank, so a restore takes effect without a power cycle.
 
+## Where the firmware lives
+
+This repository is the host side only. The firmware itself, its simulator tests
+and its release machinery are in
+[jeanbrazeau/Nava-Firmware](https://github.com/jeanbrazeau/Nava-Firmware): the
+version number lives in one file there (`downtown-solutions_firmware/version.h`),
+`scripts/release.py` in that repository cuts a tag from it, and that repository's
+CI builds the `.syx` this tool downloads and flashes.
+
+`nava build` is the one command here that wants a firmware checkout, and says so
+rather than failing obscurely when there is none. Everything else — flash,
+backup, restore, inspect, show — needs no source at all.
+
 ## Protocol
 
 Application messages are distinct from the bootloader's, so neither can be
@@ -243,22 +234,57 @@ rejected write leaves the old pattern intact rather than half-replaced.
 ## Tests
 
 ```bash
-uv run pytest
+uv run pytest                        # the Python package
+node --test "tests/web/*.test.js"    # the web app
 ```
 
-Verified on CPython 3.10, 3.11 and 3.13.
+Verified on CPython 3.10 and 3.13, and on Node 22. No hardware needed:
+`tests/fakenava.py` and `tests/web/fakenava.js` model the device, and each
+suite's round-trip test backs up the model, wipes it and restores it byte for
+byte. `test_bootloader.py` reproduces the released `Nava0tone_0.90b.syx`
+exactly, which is what pins the encoder to what the bootloader in flash actually
+decodes. `test_records.py` decodes hand-built byte images rather than
+round-tripping through an encoder — a decoder checked against its own inverse
+proves nothing about whether either matches `EEprom.ino`.
 
-No hardware needed. `tests/fakenava.py` models the device, and the round-trip
-test backs up 145 items, wipes the model and restores it byte for byte.
-`test_bootloader.py` reproduces the released `Nava0tone_0.90b.syx` exactly, which
-is what pins the encoder to what the bootloader in flash actually decodes.
-`test_records.py` decodes
-hand-built byte images rather than round-tripping through an encoder — a decoder
-checked against its own inverse proves nothing about whether either matches
-`EEprom.ino`. `test_tui.py` drives the interface through Textual's test pilot,
-including the confirmation gates.
+### Keeping the two implementations honest
+
+The web app is a second implementation of the same protocol and the same EEPROM
+layouts, in a language the firmware repository's tests cannot reach. Two
+implementations of one spec drift, and the drift would only show up against
+hardware, so they are pinned to each other:
+
+`tests/fixtures/vectors.json` holds byte images and the exact strings the Python
+code produces from them. `tests/test_vectors.py` asserts Python still reproduces
+that file; `tests/web/vectors.test.js` asserts JavaScript produces the same
+bytes and the same strings from the same images, down to the spaces in the step
+grid. Changing one side alone fails one of them.
+
+A deliberate change means regenerating and then following it through:
+
+```bash
+uv run python tests/make_vectors.py
+node --test "tests/web/*.test.js"    # now fix web/js until this passes
+```
 
 What is NOT tested here is that `protocol.py` still agrees with the firmware —
 that check needs the firmware headers, so it lives in the firmware repository
 (`scripts/tests/`), which installs this package and compares the two. It fails on
 the side that would have to change.
+
+## Deploying the site
+
+`web/` is plain ES modules and one stylesheet: no build step, no dependencies,
+nothing fetched from a CDN. `.github/workflows/pages.yml` uploads that directory
+to GitHub Pages after the test workflow passes on `master`.
+
+It needs the repository set up once: **Settings → Pages → Source → GitHub
+Actions**. With the default branch-based source the workflow runs and the deploy
+step fails, because that source ignores artifacts entirely.
+
+To work on it locally, serve the directory — ES modules will not load over
+`file://`, and Web MIDI needs a secure context, which `localhost` counts as:
+
+```bash
+python3 -m http.server -d web 8000
+```

@@ -1,7 +1,9 @@
 """Text rendering of a decoded pattern.
 
-Kept out of the TUI so `nava show` and the browser draw the same grid, and so the
-layout can be tested as plain strings rather than through a terminal.
+Kept apart from the commands so the layout can be tested as plain strings. The
+web app draws the same grid from web/js/render.js, and the two are pinned to
+each other by tests/fixtures/vectors.json - a space added here and not there
+fails the test rather than quietly producing two different tools.
 
 Markers follow how the panel programs a step - a step cycles off -> soft -> loud,
 so the grid distinguishes those three and nothing else:

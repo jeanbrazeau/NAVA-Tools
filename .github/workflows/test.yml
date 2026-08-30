@@ -1,10 +1,16 @@
-# The suite runs on every push: there is no hardware in CI, and there does not
-# need to be - tests/fakenava.py models the device, so the transfer loops, the
-# protocol and the TUI are all exercised without one.
+# Both suites run on every push: there is no hardware in CI, and there does not
+# need to be - tests/fakenava.py and tests/web/fakenava.js model the device, so
+# the transfer loops and the protocol are exercised on both sides without one.
 #
-# The versions are the floor and the ceiling of what pyproject declares. 3.10 is
-# where `X | None` in a runtime-evaluated position would break first, and it is
-# not the version anyone develops on, so it is the one that regresses silently.
+# The Python versions are the floor and the ceiling of what pyproject declares.
+# 3.10 is where `X | None` in a runtime-evaluated position would break first, and
+# it is not the version anyone develops on, so it is the one that regresses
+# silently.
+#
+# The two jobs are what keeps the web app honest: test_vectors.py checks that
+# tests/fixtures/vectors.json still describes this package, and the node job
+# checks that web/js reproduces the same fixture. Changing one implementation
+# alone fails one of them.
 
 name: Tests
 
@@ -38,7 +44,21 @@ jobs:
       # environment is reproducible, and a lockfile that no longer satisfies
       # pyproject.toml should fail here rather than be silently updated.
       - name: Install
-        run: uv sync --locked --extra tui --python ${{ matrix.python }}
+        run: uv sync --locked --python ${{ matrix.python }}
 
       - name: Test
         run: uv run --python ${{ matrix.python }} pytest -q
+
+  node:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # node:test and ES modules only; the web app has no dependencies and no
+      # build step, so there is nothing to install and nothing to lock.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Test
+        run: node --test "tests/web/*.test.js"
