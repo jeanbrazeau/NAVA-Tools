@@ -124,6 +124,24 @@ main {
 }
 
 
+/* All four panels occupy one grid cell, so the dialog is sized by the largest
+   of them and stops resizing as you switch tabs - which a centred dialog makes
+   very visible, since a change in either dimension moves the whole box.
+   Sizing it from the panels themselves rather than from a hardcoded width and
+   height means it stays right when a panel gains a control.
+
+   This is the one deliberate exception to the global `[hidden]` rule above: the
+   inactive panels have to keep taking up space to do the sizing. `visibility:
+   hidden` still takes them out of the accessibility tree and off the tab order,
+   so `hidden` remains true in every sense but the one being borrowed. */
+.panels { display: grid; }
+.panels > section { grid-area: 1 / 1; }
+.panels > section[hidden] {
+  display: block !important;
+  visibility: hidden;
+  pointer-events: none;
+}
+
 .row {
   display: flex;
   gap: 14px;
