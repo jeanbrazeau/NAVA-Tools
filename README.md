@@ -43,7 +43,9 @@ shifts under you.
 two machines sharing a sequencer: one drives the analogue voices, the other sends
 notes on the ext channel. EXT lists all sixteen lanes, so T7 is in the same place
 in every pattern, labelled with note names when the backup carries a config
-record to read the note map from. An ext loop shorter than the pattern repeats
+record to read the note map from. They count up the page — T1 at the bottom, T16
+at the top — which is the direction the kit next door is stacked in, BASS DRUM at
+the foot and CRASH over everything. An ext loop shorter than the pattern repeats
 against the kit — what `extStepCount` does on the hardware — with a dashed rule
 marking where it starts over.
 

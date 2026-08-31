@@ -343,8 +343,13 @@ export function patternChart(pattern, {
 
     // All sixteen ext lanes, not just the used ones, for the same reason the
     // voices are all present: T7 should be in the same place in every pattern.
+    //
+    // Counted up the page, T1 at the bottom and T16 at the top, which is the
+    // direction the kit next door is stacked in - BASS DRUM at the foot,
+    // CRASH over everything. A track list that started at the top and counted
+    // down was the one thing on this chart reading the other way.
     extBody = el('tbody');
-    for (let track = 0; track < NBR_EXT_TRACK; track += 1) {
+    for (let track = NBR_EXT_TRACK - 1; track >= 0; track -= 1) {
       const note = config ? noteName(config.extNotes[track]) : null;
       addLane(
         extBody, key('ext', track), `T${track + 1}${note ? `  ${note}` : ''}`, 'chart-row chart-ext',
