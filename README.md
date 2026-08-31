@@ -29,33 +29,32 @@ Four panels, in the order the work usually happens.
 browser, not by index — an index moves whenever a USB device is added or
 removed, and a remembered index would silently point at a different device.
 
-**Browse** takes `.syx` files dropped on it, says what each one holds, and
-decodes whatever you select. Patterns render as a step grid:
+**Browse** takes `.syx` files dropped on it and draws a pattern as the chart
+printed on the machine: the voices down the left in the panel's own order, the
+sixteen steps across, a heavier rule every fourth step.
 
-```
-backup-2026-07-29.syx  ›  C3
+A pattern is chosen the way the machine chooses one — a **BANK** selector and a
+column of **PATTERN** buttons 1–16. Only the banks a file actually holds appear,
+so a full backup offers A–H and a single-bank file offers one; a pattern slot the
+file has nothing in is disabled rather than hidden, so the numbering never
+shifts under you.
 
-len 16  scale 1/16  shuffle 2  flam 0
-
-        1 · · · 2 · · · 3 · · · 4 · · ·
-BD      # . . . # . . . # . . . # . . .
-SD      . . . . o . . . . . . . o . . .
-CH      o o o o o o o o o o o o o o o o
-
-ext MIDI  (16 steps)
-T1 C3   # . . . . . . . # . . . . . . .
-
-#  loud    o  soft    .  off    f  flam
-```
+**INST.** and **EXT** are two views of the same sixteen columns, because they are
+two machines sharing a sequencer: one drives the analogue voices, the other sends
+notes on the ext channel. EXT lists all sixteen lanes, so T7 is in the same place
+in every pattern, labelled with note names when the backup carries a config
+record to read the note map from. An ext loop shorter than the pattern repeats
+against the kit — what `extStepCount` does on the hardware — with a dashed rule
+marking where it starts over.
 
 Loud and soft are compared against each instrument's own two levels, not a global
-threshold — the 909's table is not uniform, and CH at 80 is soft while BD at 50 is
-loud. Ext lanes are labelled with note names when the backup carries a config
-record to read the note map from. An ext layer shorter than the pattern is shown
-repeating against the kit, which is what `extStepCount` does on the hardware.
+threshold: the 909's table is not uniform, and CH at 80 is soft while BD at 50 is
+loud.
 
-Tracks show their pattern sequence; the config record shows tempo, sync, channels,
-velocities and the ext note map.
+**config / setup** under the file list shows tempo, sync, channels, velocities
+and the ext note map, and is disabled for a file that carries no config record.
+Track records are not viewable here — they are read, restored and saved like
+everything else, but `nava show FILE.syx "track 3"` is what prints one.
 
 A `.hex` dropped here is converted to a bootloader `.syx` on the way in, which is
 `nava hex2syx` without the install.
@@ -204,6 +203,30 @@ installed; the commands that touch a port need `mido` and `python-rtmidi`.
 | `nava restore FILE.syx` | write a backup back |
 | `nava inspect FILE.syx` | describe a `.syx` without a device attached |
 | `nava show FILE.syx A1` | print one decoded pattern, track or the config |
+
+`nava show` prints the same pattern the web app draws, as text — and unlike the
+web app it will print a track record too:
+
+```
+backup-2026-07-29.syx  ›  C3
+
+len 16  scale 1/16  shuffle 2  flam 0
+
+        1 · · · 2 · · · 3 · · · 4 · · ·
+BD      # . . . # . . . # . . . # . . .
+SD      . . . . o . . . . . . . o . . .
+CH      o o o o o o o o o o o o o o o o
+
+ext MIDI  (16 steps)
+T1 C3   # . . . . . . . # . . . . . . .
+
+#  loud    o  soft    .  off    f  flam
+```
+
+Empty lanes are dropped here because a terminal has no room for sixteen of them;
+the chart keeps every row, so a voice sits in the same place in every pattern.
+The two renderers are pinned to each other — see [Keeping the two
+implementations honest](#keeping-the-two-implementations-honest).
 
 ### Finding the port
 
