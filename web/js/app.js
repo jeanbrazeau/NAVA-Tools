@@ -359,6 +359,42 @@ function addFile(name, bytes, dated = null) {
   return file;
 }
 
+/* The second click of a double click, rather than a dblclick event - because
+ * there is no dblclick event to listen for.
+ *
+ * The first click selects the file, and selecting rebuilds the list, so the
+ * element under the pointer is not the same one the first click landed on.
+ * Chrome does not fire dblclick when that happens: instrumented, a double
+ * click on a row produces two clicks with detail 1 and 2 and nothing else at
+ * all. A dblclick handler on the row, on the list, or on the document would
+ * each have waited forever. `detail` is the click count the browser is already
+ * keeping, and it survives the row being replaced underneath it.
+ *
+ * Bound to the list rather than the rows for the same reason: the row this
+ * started on is gone by now. The one under the pointer is the one meant. */
+let renameTarget = null;
+
+/* Which row the gesture started on, taken before anything moves.
+ *
+ * The first click selects the file, and that rebuilds Detail above this list -
+ * a different file is a different chart, a different height, and the list
+ * slides up or down under a pointer that has not moved. Asking what is under
+ * the pointer on the second click therefore answers with a different row than
+ * the one that was double-clicked, and renames the wrong file. mousedown runs
+ * before any of that. */
+$('files').addEventListener('mousedown', (event) => {
+  if (event.detail !== 1) return;
+  renameTarget = event.target.closest?.('li[data-name]')?.dataset.name ?? null;
+}, true);
+
+$('files').addEventListener('click', (event) => {
+  if (event.detail < 2 || !renameTarget) return;
+  const file = fileByName(renameTarget);
+  // By name, not by position: the row element is a new one after the rebuild.
+  const row = [...$('files').children].find((li) => li.dataset.name === renameTarget);
+  if (file && row) renameInPlace(row, file);
+});
+
 /** Rename a file by double-clicking its row.
  *
  * In place rather than through a dialog: the name is already on screen and the
@@ -407,11 +443,17 @@ function renameInPlace(row, file) {
   box.addEventListener('dblclick', (event) => event.stopPropagation());
 }
 
+/** The extension is not the user's to delete: it is stripped off whatever was
+ *  typed and put back. `.syx` is what makes the file mean anything to the next
+ *  thing that opens it - a restore, another copy of this page, the CLI - and a
+ *  rename is about the name, not about what kind of file it is. */
 function commitRename(file, typed) {
-  const wanted = typed.trim();
-  if (!wanted || wanted === file.name) return;
   const dot = file.name.lastIndexOf('.');
-  const named = wanted.includes('.') || dot <= 0 ? wanted : wanted + file.name.slice(dot);
+  const extension = dot > 0 ? file.name.slice(dot) : '';
+  const stem = typed.trim().replace(new RegExp(`${extension}$`, 'i'), '').trim();
+  if (!stem) return;
+  const named = stem + extension;
+  if (named === file.name) return;
   if (state.files.some((f) => f !== file && f.name === named)) {
     status(`${named} is already loaded — not renamed`);
     return;
@@ -441,8 +483,9 @@ function refreshFiles() {
     // which a colour would not.
     name.textContent = file.edited ? `\u2022 ${file.name}` : file.name;
     item.append(name);
+    // Which row this is, for the rename delegated to the list below.
+    item.dataset.name = file.name;
     item.addEventListener('click', () => selectFile(file));
-    item.addEventListener('dblclick', () => renameInPlace(item, file));
     list.appendChild(item);
   }
 

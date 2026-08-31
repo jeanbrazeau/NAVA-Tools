@@ -172,11 +172,18 @@ indistinguishable from one that did nothing.
 **Double-click a file's name** to rename it, in place in the list rather than
 through a dialog: the name is already on screen and the row is already the
 right shape to type in. Enter or clicking away keeps it, Escape puts it back,
-and the extension survives a name typed without one - `.syx` is what makes the
-file mean anything to the next thing that opens it. The name is the key
-everything downstream looks the file up by, so two files cannot share one and
-an empty name is refused; either way the old name stays and the status line
-says why.
+and the extension is not yours to delete: it is stripped off whatever you type
+and put back, because `.syx` is what makes the file mean anything to the next
+thing that opens it. The name is the key everything downstream looks the file up
+by, so two files cannot share one and an empty name is refused; either way the
+old name stays and the status line says why.
+
+It listens for the second click rather than for a double click, and reads which
+row it started on from the mousedown before it. Both are for the same reason:
+the first click selects the file, which rebuilds the chart above the list, and
+the list moves under a pointer that has not. A `dblclick` event is never fired
+at all when that happens, and the row under the pointer by then belongs to a
+different file.
 
 Nothing is written to the file it came from. "Edited" means the bytes differ
 from how the file was loaded, compared byte for byte rather than remembering
