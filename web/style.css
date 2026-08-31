@@ -424,12 +424,15 @@ input[type="checkbox"]:checked::before {
    coming" - the same invert the chart uses for a step that plays, so the two
    grids on this page read the same way. */
 .matrix { overflow-x: auto; margin-bottom: 10px; }
-/* Separate, not collapsed, and this is the whole reason: everything is
-   selected by default, and 128 filled cells sharing their borders read as one
-   black rectangle rather than as 128 chosen patterns. The gap keeps each cell
-   a box you can see the edges of. */
-table.matrix-grid { border-collapse: separate; border-spacing: 2px; }
-.matrix-grid th, .matrix-grid td { padding: 0; }
+/* Collapsed, so the cells touch and the grid is one ruled surface rather than
+   128 loose chips - the same way the step chart on Browse is drawn. A block of
+   selected cells does read as a solid mass, which is the point: it is a filled
+   region, and the row and column labels are what say where it starts. */
+table.matrix-grid { border-collapse: collapse; }
+/* line-height 0 because the cell is a button in a table cell, and a table cell
+   keeps a line box under an inline-level child - which is what was holding the
+   cells a pixel or two apart in both directions. */
+.matrix-grid th, .matrix-grid td { padding: 0; line-height: 0; }
 .matrix-head {
   font: inherit;
   font-size: 10px;
@@ -446,14 +449,21 @@ table.matrix-grid { border-collapse: separate; border-spacing: 2px; }
 .matrix-cell {
   appearance: none;
   display: block;
-  width: 18px;
-  height: 14px;
+  width: 16px;
+  height: 16px;
   padding: 0;
   border: 1px solid var(--ink);
   background: var(--paper);
   cursor: pointer;
 }
-.matrix-cell.on { background: var(--ink); }
+/* Filled, with a hairline of paper inside its own edge. The cells touch, so a
+   selected block would otherwise be one undivided mass and there would be no
+   telling twelve chosen patterns from thirteen. The inset ring keeps every
+   cell its own square while the region still reads as one. */
+.matrix-cell.on {
+  background: var(--ink);
+  box-shadow: inset 0 0 0 1px var(--paper);
+}
 /* A slot the chosen backup has nothing in. Hollow and dashed rather than
    hidden, so the grid keeps its shape and A5 is in the same place whichever
    file is loaded - the same reason Browse disables an empty PATTERN button
@@ -469,6 +479,21 @@ table.matrix-grid { border-collapse: separate; border-spacing: 2px; }
    metrics and sit under the pattern columns they line up with. A rule above
    them says they are a different thing being counted. */
 .matrix-tracks .matrix-cell { border-top-width: 2px; }
+
+/* Wide enough to fill the box it is in, so the grid reads as the panel's own
+   surface rather than a stamp in the corner of it. Fixed layout so the sixteen
+   slot columns divide what is left evenly after the row labels, which get a
+   width of their own - TRK is the widest of them and is not negotiable.
+   Only above the breakpoint: stacked, the box is narrow enough that the cells
+   should keep their natural size and the grid scroll instead. */
+@media (min-width: 761px) {
+  table.matrix-grid { width: 100%; table-layout: fixed; }
+  .matrix-corner, .matrix-row-head { width: 2.4rem; }
+  /* Height follows width rather than being set: the column width is whatever
+     is left after the labels, and only the browser knows it. aspect-ratio is
+     how a cell stays square through that. */
+  .matrix-cell { width: 100%; height: auto; aspect-ratio: 1; }
+}
 
 /* The image list and Flash on one line. The list takes every spare pixel, so
    the button ends up against the right-hand edge without being pushed there -
