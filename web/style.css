@@ -578,7 +578,9 @@ table.chart-grid {
 /* TRIG and ACCENT are not voices, so they do not look like ones. The ext lanes
    have a whole view to themselves now and need no marking inside it. */
 .chart-utility .chart-label { font-style: italic; }
-.chart-utility:first-of-type td.cell { border-top-width: 2px; }
+/* The rule between the two utility lanes and the kit below them, drawn on
+   the first kit row so it lands whichever utility lanes are present. */
+.chart-utility + .chart-row:not(.chart-utility) td.cell { border-top-width: 2px; }
 
 td.cell {
   border: 1px solid var(--ink);

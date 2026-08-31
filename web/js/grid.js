@@ -34,7 +34,7 @@ import * as edit from './edit.js';
 
 // The trigger output. Index 0 in the record, programmed per step like a voice,
 // but it fires a pulse at a jack rather than a sound - so it sits with ACCENT
-// under the kit rather than in it.
+// above the kit rather than in it.
 const TRIG = 0;
 
 // Instrument index -> the name printed on the machine, in the order the chart
@@ -265,6 +265,25 @@ export function patternChart(pattern, {
     cells = new Map();
 
     instBody = el('tbody');
+
+    // ACCENT and TRIG are the two lanes that are not voices: one accents
+    // whatever the voices are doing, the other pulses the trigger output.
+    // They are programmed per step like everything else, so they belong on
+    // the chart - above the kit, marked as not being part of it.
+    addLane(
+      instBody, key('acc', TOTAL_ACC), 'ACCENT', 'chart-row chart-utility',
+      'total accent - accents every voice on that step',
+      (i) => cellFor(i, (current.inst[TOTAL_ACC] >> i) & 1 ? 'accent' : 'off'),
+    );
+    addLane(
+      instBody, key('inst', TRIG), 'TRIG', 'chart-row chart-utility',
+      `TRIG output (${INSTRUMENT_NAMES[TRIG]})`,
+      (i) => {
+        const step = i < steps ? current.step(TRIG, i) : null;
+        return cellFor(i, step && step.on ? current.level(TRIG, i) : 'off');
+      },
+    );
+
     for (const [instrument, label] of CHART_ROWS) {
       addLane(
         instBody, key('inst', instrument), label, 'chart-row',
@@ -275,24 +294,6 @@ export function patternChart(pattern, {
         },
       );
     }
-
-    // TRIG and ACCENT are the two lanes that are not voices: one pulses the
-    // trigger output, the other accents whatever the voices are doing. They
-    // are programmed per step like everything else, so they belong on the
-    // chart - below the kit, marked as not being part of it.
-    addLane(
-      instBody, key('inst', TRIG), 'TRIG', 'chart-row chart-utility',
-      `TRIG output (${INSTRUMENT_NAMES[TRIG]})`,
-      (i) => {
-        const step = i < steps ? current.step(TRIG, i) : null;
-        return cellFor(i, step && step.on ? current.level(TRIG, i) : 'off');
-      },
-    );
-    addLane(
-      instBody, key('acc', TOTAL_ACC), 'ACCENT', 'chart-row chart-utility',
-      'total accent - accents every voice on that step',
-      (i) => cellFor(i, (current.inst[TOTAL_ACC] >> i) & 1 ? 'accent' : 'off'),
-    );
 
     // All sixteen ext lanes, not just the used ones, for the same reason the
     // voices are all present: T7 should be in the same place in every pattern.
