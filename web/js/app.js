@@ -13,6 +13,7 @@
 import * as protocol from './protocol.js';
 import * as bootloader from './bootloader.js';
 import * as grid from './grid.js';
+import { History } from './history.js';
 import * as ihex from './ihex.js';
 import * as library from './library.js';
 import * as midi from './midi.js';
@@ -45,6 +46,16 @@ const state = {
   // fork for as long as that link is open, and a shared link carries it.
   repo: new URLSearchParams(location.search).get('repo') || releases.DEFAULT_REPO,
 };
+
+// Undo/redo for pattern edits. Session-lived and in memory, like the rest of
+// `state` - it does not need to survive a reload, and the History class
+// itself has no idea what a file or an item is, so it lives outside `state`.
+const history = new History();
+
+// A copy of each item's payload as it stood when its file was loaded (or last
+// saved), so an edited file can tell whether undoing has brought it back to
+// that state without having to remember every edit that happened in between.
+const loadedSnapshots = new WeakMap();
 
 /* ---------- small helpers ---------- */
 
@@ -287,6 +298,7 @@ function addFile(name, bytes) {
     }
   }
   const file = library.load(label, data);
+  for (const item of file.items) loadedSnapshots.set(item, item.payload.slice());
   state.files = [file, ...state.files.filter((f) => f.name !== label)];
   refreshFiles();
   selectFile(file);
@@ -415,7 +427,7 @@ function showChart(file, item) {
       // The record's own bytes, edited in place. Everything downstream -
       // Restore, Save - reads the items, so an edit is live the moment it lands.
       payload: item.payload,
-      onEdit: () => markEdited(file),
+      onEdit: (before) => recordEdit(file, item, before),
     }),
   );
   chart.hidden = false;
@@ -472,15 +484,102 @@ function showDetail(text) {
 /* An edit changes the record in memory, never the file it came from. The list
  * marks the file so it is obvious there is something to save, and the tab asks
  * before closing on top of it. */
-function markEdited(file) {
-  file.edited = true;
+
+const sameBytes = (a, b) =>
+  a.length === b.length && a.every((value, i) => value === b[i]);
+
+/** Whether every item in the file still reads exactly as it did when the file
+ *  was loaded (or last saved) - which is the file's own definition of "not
+ *  edited", not just "an edit happened at some point". Undoing back to that
+ *  state has to clear the marker, not just leave it set because a click once
+ *  fired. */
+function bytesMatchLoaded(file) {
+  return file.items.every((item) => sameBytes(item.payload, loadedSnapshots.get(item) ?? item.payload));
+}
+
+function syncEditedFlag(file) {
+  file.edited = !bytesMatchLoaded(file);
   refreshFiles();
-  status(`${file.name}: edited, not saved`);
+}
+
+function announceEditState(file) {
+  status(file.edited ? `${file.name}: edited, not saved` : `${file.name}: back to as loaded`);
 }
 
 function unsavedEdits() {
   return state.files.some((f) => f.edited);
 }
+
+/* ---------- undo/redo ---------- */
+
+function refreshUndoButtons() {
+  $('undo-edit').disabled = !history.canUndo();
+  $('redo-edit').disabled = !history.canRedo();
+}
+
+/** One history entry per gesture, not per cell - grid.js already fires
+ *  `onEdit` once per drag, with the bytes as they stood before it. */
+function recordEdit(file, item, before) {
+  history.push({ file, item, before, after: item.payload.slice() });
+  syncEditedFlag(file);
+  refreshUndoButtons();
+  announceEditState(file);
+}
+
+/** Show whatever the undo/redo just changed, then redraw it.
+ *
+ * The history is one chronological stack across every file, so an undo can
+ * land on a pattern that is not the one on screen. It selects that pattern
+ * rather than changing it quietly: an edit you cannot see undone is
+ * indistinguishable from an undo that did nothing, and the next thing the user
+ * does would be to press it again.
+ */
+function afterHistoryChange(file, item) {
+  syncEditedFlag(file);
+  state.selectedFile = file;
+  state.selectedItem = item;
+  refreshFiles();
+  refreshItems();          // redraws the chart from the record as it now reads
+  if ($('panel-browse').hidden) $('tab-browse').click();
+  refreshUndoButtons();
+  announceEditState(file);
+}
+
+function undoEdit() {
+  const entry = history.undo();
+  if (!entry) return;
+  // set(), not a new array: item.payload is the same reference the chart was
+  // built on, and everything downstream reads that reference rather than a
+  // copy of it.
+  entry.item.payload.set(entry.before);
+  afterHistoryChange(entry.file, entry.item);
+}
+
+function redoEdit() {
+  const entry = history.redo();
+  if (!entry) return;
+  entry.item.payload.set(entry.after);
+  afterHistoryChange(entry.file, entry.item);
+}
+
+$('undo-edit').addEventListener('click', undoEdit);
+$('redo-edit').addEventListener('click', redoEdit);
+
+// Cmd+Z / Ctrl+Z to undo, Cmd+Shift+Z or Ctrl+Y to redo - but not while the
+// Transfer and Firmware panels' text fields have focus, where Z and Y are
+// just letters being typed.
+window.addEventListener('keydown', (event) => {
+  if (!(event.metaKey || event.ctrlKey)) return;
+  const key = event.key.toLowerCase();
+  const isUndo = key === 'z' && !event.shiftKey;
+  const isRedo = (key === 'z' && event.shiftKey) || (key === 'y' && event.ctrlKey);
+  if (!isUndo && !isRedo) return;
+  const target = document.activeElement;
+  if (target?.tagName === 'INPUT' || target?.tagName === 'TEXTAREA' || target?.isContentEditable) return;
+  event.preventDefault();
+  if (isUndo) undoEdit();
+  else redoEdit();
+});
 
 $('save-file').addEventListener('click', async () => {
   const file = state.selectedFile;
@@ -498,6 +597,10 @@ $('save-file').addEventListener('click', async () => {
   await writeFile(target, bytes);
   file.edited = false;
   file.bytes = bytes;
+  // The saved state is now what "not edited" means for this file - undoing
+  // past this point should mark it edited again, not leave the marker
+  // pointing at bytes that were true before the save.
+  for (const item of file.items) loadedSnapshots.set(item, item.payload.slice());
   refreshFiles();
   status(`wrote ${target.name} (${bytes.length} bytes)`);
 });
@@ -784,4 +887,5 @@ $('releases-link').textContent = `${state.repo} releases`;
 if (!midi.isSupported()) $('unsupported').hidden = false;
 refreshPorts();
 refreshFiles();
+refreshUndoButtons();
 updateConnection();

@@ -65,8 +65,9 @@ const el = (tag, className, text) => {
  * click writes into those bytes and the chart is redrawn from what they now
  * say, rather than from what the click was supposed to do: if an edit and the
  * decoder ever disagreed, the grid would show the disagreement instead of
- * hiding it. `onEdit` fires after each change so the caller can mark the file
- * unsaved. */
+ * hiding it. `onEdit` fires once per gesture, with the record's bytes as they
+ * stood before it, so the caller can mark the file unsaved and push the
+ * gesture onto an undo stack. */
 export function patternChart(pattern, { config = null, title = '', payload = null, onEdit = null } = {}) {
   const root = el('div', 'chart');
   if (title) root.appendChild(el('div', 'chart-title', title));
@@ -327,7 +328,13 @@ export function patternChart(pattern, { config = null, title = '', payload = nul
         write = (s) => edit.setStep(payload, index, s, wanted);
       }
 
-      stroke = { lane: at.lane, kind, index, write, done: new Set(), changed: false };
+      // Snapshotted before the first write of the gesture, so undo has the
+      // record exactly as it stood when the pointer went down - not as it
+      // stood after whatever the first cell of the drag did to it.
+      stroke = {
+        lane: at.lane, kind, index, write, done: new Set(), changed: false,
+        before: payload.slice(),
+      };
       if (kind !== 'acc') pick(kind, index);
       paintStep(step);
       root.classList.add('painting');
@@ -341,15 +348,16 @@ export function patternChart(pattern, { config = null, title = '', payload = nul
 
     function end() {
       if (!stroke) return;
-      const changed = stroke.changed;
+      const { changed, before } = stroke;
       stroke = null;
       root.classList.remove('painting');
       document.removeEventListener('pointermove', extend);
       document.removeEventListener('pointerup', end);
       document.removeEventListener('pointercancel', end);
       // Once per gesture, not once per cell: a sixteen-step drag should mark
-      // the file unsaved once, not rebuild the file list sixteen times.
-      if (changed && onEdit) onEdit();
+      // the file unsaved once, not rebuild the file list sixteen times - and
+      // should undo as the one action it looked like, not sixteen of them.
+      if (changed && onEdit) onEdit(before);
     }
 
     root.addEventListener('pointerdown', begin);
