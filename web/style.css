@@ -38,6 +38,10 @@
   /* Every box in the readouts row under the chart, so they stay one height
      whether the row is on one line or folded into two. */
   --readout-h: 22px;
+  /* The row labels on the dump/restore grid, and the gutter opposite them.
+     Kept narrow because every pixel it takes is a pixel off sixteen columns of
+     cells, which divide whatever is left. */
+  --matrix-label: 1.5rem;
   --grid-height: calc(var(--pattern-step) * 16);
   --font: ui-monospace, "SF Mono", Menlo, Consolas, "DejaVu Sans Mono", monospace;
   --dither: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='2' height='2' shape-rendering='crispEdges'%3E%3Crect width='1' height='1'/%3E%3Crect x='1' y='1' width='1' height='1'/%3E%3C/svg%3E");
@@ -513,15 +517,24 @@ table.matrix-grid { margin-inline: auto; }
    The floor is what stops the cells shrinking when the box does. Below it the
    columns stop dividing and the table overflows instead, which .matrix scrolls
    - a grid you scroll is usable, a grid of five-pixel cells is not. */
-table.matrix-grid { width: 100%; table-layout: fixed; }
-.matrix-corner, .matrix-row-head, .matrix-gutter { width: 2.4rem; }
-.matrix-cell {
+/* No minimum width, on the table or on the cells, and both were tried.
+ *
+ * A min-width on the cell does nothing under table-layout: fixed - the column
+ * keeps its share and the cell draws past it, over its neighbour. Moving the
+ * floor onto the table fixed that but bought a horizontal scrollbar instead:
+ * sixteen columns of any worthwhile size do not fit the box when Dump and
+ * Restore share the width, so the table overflowed and the grid was cut off
+ * mid-row.
+ *
+ * So the columns simply divide what there is. The cells get small on a small
+ * window, which is the honest trade: the whole grid stays on screen, which is
+ * the thing it is for. */
+table.matrix-grid {
   width: 100%;
-  height: auto;
-  aspect-ratio: 1;
-  min-width: 22px;
-  min-height: 22px;
+  table-layout: fixed;
 }
+.matrix-corner, .matrix-row-head, .matrix-gutter { width: var(--matrix-label); }
+.matrix-cell { width: 100%; height: auto; aspect-ratio: 1; }
 
 /* The image list and Flash on one line. The list takes every spare pixel, so
    the button ends up against the right-hand edge without being pushed there -
@@ -1211,11 +1224,9 @@ dialog::backdrop {
   .transfer-row > * { width: auto; flex: 1 1 0; min-width: 0; }
 }
 
-/* A bigger floor through the band where the two grids share the width. They
-   sit on the floor there rather than dividing what they are given, which left
-   the table stopping short of its box with sixty to eighty pixels of nothing
-   beside it. This spends that on the cells. */
-@media (min-width: 651px) and (max-width: 760px) {
-  .matrix-cell { min-width: 26px; min-height: 26px; }
-}
+/* No raised floor through 651-760. Sixteen columns of anything bigger do not
+   fit the box the two grids share there - the table overflowed and .matrix
+   clipped it at the twelfth column, which is a worse answer than smaller
+   cells. The narrower row labels above are what buys the cells their width
+   back, and they divide whatever is left. */
 
