@@ -860,8 +860,10 @@ function relightScale(wrap, value) {
 function readouts(pattern, editable = false) {
   const wrap = el('div', 'chart-readouts');
   const boxes = [
-    ['SHUFFLE', dial('shuffle', 'SHUFFLE', pattern.shuffle, editable), 'readout readout-control'],
-    ['FLAM', dial('flam', 'FLAM', pattern.flam, editable), 'readout readout-control'],
+    // The two dials are named apart because the narrow layouts order them
+    // independently - see the .readout-* order rules in the media queries.
+    ['SHUFFLE', dial('shuffle', 'SHUFFLE', pattern.shuffle, editable), 'readout readout-control readout-shuffle'],
+    ['FLAM', dial('flam', 'FLAM', pattern.flam, editable), 'readout readout-control readout-flam'],
     // No box of its own: the divisions are already a bordered strip, and a
     // second rule around them was a box drawn around a box.
     ['SCALE', scalePicker(pattern.scale, editable), 'readout readout-control readout-bare readout-mid'],

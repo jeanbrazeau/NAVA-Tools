@@ -35,6 +35,9 @@
   /* The pinned status bar's height, read by both the bar itself and the room
      body leaves below its content so the bar never covers the last line. */
   --statusbar: 24px;
+  /* Every box in the readouts row under the chart, so they stay one height
+     whether the row is on one line or folded into two. */
+  --readout-h: 22px;
   --grid-height: calc(var(--pattern-step) * 16);
   --font: ui-monospace, "SF Mono", Menlo, Consolas, "DejaVu Sans Mono", monospace;
   --dither: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='2' height='2' shape-rendering='crispEdges'%3E%3Crect width='1' height='1'/%3E%3Crect x='1' y='1' width='1' height='1'/%3E%3C/svg%3E");
@@ -702,6 +705,12 @@ td.cell.editable.loud:hover { box-shadow: inset 0 0 0 2px var(--paper); }
   gap: 7px;
   align-items: baseline;
   font-size: 11px;
+  /* One height for every box, rather than each line finding its own. LAST STEP
+     is the tallest naturally - its value is a size up from the labels - so on
+     one line the others stretched to it and matched, and the moment the row
+     folded in two the line without it came out shorter and the square had two
+     different rectangle heights. This is that natural height, written down. */
+  min-height: var(--readout-h);
 }
 .readout-label { letter-spacing: 0.08em; opacity: 0.75; }
 .readout-value { font-size: 13px; }
@@ -732,7 +741,21 @@ td.cell.editable.loud:hover { box-shadow: inset 0 0 0 2px var(--paper); }
 /* SCALE brings its own bordered strip, so the readout box around it would be a
    second rule enclosing the first. The label keeps its left padding pulled off
    so the row still starts on the same line as the boxes either side. */
-.readout-bare { border-color: transparent; padding-left: 0; }
+/* SCALE brings its own bordered strip, so the readout box around it would be a
+   second rule enclosing the first. The border stays as transparent rather than
+   being removed so the label still starts on the same line as the boxes either
+   side; the vertical half of it goes, along with the vertical padding, so the
+   strip can be the full height of its box and its rectangle lines up with the
+   SHUFFLE and FLAM rectangles beside it rather than sitting 3px short inside
+   an invisible one. `stretch` is what makes it take that height - the row
+   stretches the boxes to a common height already, and this passes it on. */
+.readout-bare {
+  border-color: transparent;
+  border-block-width: 0;
+  padding-block: 0;
+  padding-left: 0;
+  align-items: stretch;
+}
 
 /* SHUFFLE and FLAM as the eight-position dials they are on the panel. Round
    here against a rulebook that rounds nothing, because these are the one thing
@@ -962,27 +985,40 @@ dialog::backdrop {
   .readout-bare .readout-label { display: none; }
 }
 
-/* The band where the Detail column is at its narrowest: two columns still, but
-   with the file list taking its 15rem out of the width, so the readouts no
-   longer fit on one line. Left to itself the row wraps wherever it runs out and
-   strands LAST STEP alone on the second line. Told where to break instead, it
-   reads as two deliberate rows - SHUFFLE, then FLAM with SCALE and LAST STEP
-   still together beside it.
+/* Where the readouts stop fitting on one line, they fold into a square rather
+   than wrapping wherever they run out:
 
-   Below 760 there is no band: the panel goes to one column, Detail takes the
-   whole width, and the row fits again.
+       SHUFFLE                LAST STEP
+       FLAM                       SCALE
 
-   A zero-height item claiming the whole line is how flexbox is asked for a
-   break. It lands on a line of its own, so the negative margin takes back the
-   row gap that line would otherwise add - without it the two rows sit 6px
-   further apart here than anywhere else. */
-@media (min-width: 761px) and (max-width: 850px) {
+   Each pair keeps the edge it had - the dials down the left, the two things
+   that report the pattern's shape down the right - so nothing moves sideways
+   on the way from one line to two, it only doubles up.
+
+   This happens twice, because the panel gets a second wind in between. From
+   761 to 850 Detail is at its narrowest, with the file list taking its 15rem
+   out of the width. Below 760 the panel goes to one column and Detail takes
+   the whole window, so the row fits again - until 612, where it does not, and
+   the same square comes back.
+
+   The order values are what fold it: the break is a zero-height item claiming
+   a whole line, which is how flexbox is asked for a break, and the two on
+   either side of it are ordered around it. Its negative margin takes back the
+   row gap the empty line would otherwise add. The auto margins already on
+   LAST STEP and SCALE put each of them at the right-hand end of its own line
+   without a rule of their own. */
+@media (min-width: 761px) and (max-width: 850px), (max-width: 612px) {
+  .readout-shuffle { order: 0; }
+  .readout-last { order: 1; }
   .readout-break {
+    order: 2;
     display: block;
     flex-basis: 100%;
     height: 0;
     margin-bottom: -6px;
   }
+  .readout-flam { order: 3; }
+  .readout-mid { order: 4; }
 }
 
 @media (max-width: 760px) {

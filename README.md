@@ -197,13 +197,15 @@ a label that vanished at 900 and reappeared at 850 would draw more attention
 than the label does; the strip keeps its aria-label, so a screen reader is not
 affected.
 
-Between 761 and 850 the readouts are then told where to break rather than left
-to wrap where they run out. That band is the narrowest the Detail column gets —
-two columns still, with the file list taking its 15rem — and left to itself the
-row strands LAST STEP alone on a second line. The break goes after SHUFFLE
-instead, so it reads as two deliberate rows: SHUFFLE, then FLAM with SCALE and
-LAST STEP still together beside it. Below 760 there is no band, because the
-panel goes to one column and Detail takes the whole width.
+Where the readouts stop fitting on one line they fold into a square rather than
+wrapping wherever they run out — SHUFFLE and LAST STEP on the top line, FLAM and
+SCALE under them, each pair keeping the edge it had. Nothing moves sideways on
+the way from one line to two; the row only doubles up.
+
+That happens twice, because the panel gets a second wind in between. From 761 to
+850 the Detail column is at its narrowest — two columns still, with the file
+list taking its 15rem. Below 760 the panel goes to one column and Detail takes
+the whole window, so the row fits again, until 612 brings the square back.
 
 The status bar is pinned to the bottom of the window and carries the connection
 state in its left corner — whether the ports are open is not something to scroll
