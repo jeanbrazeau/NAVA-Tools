@@ -519,51 +519,6 @@ pre.log .bad::before { content: "! "; }
 .control-bar .chart-tabs { margin-bottom: 0; border-bottom: none; }
 .control-bar .bank-buttons { flex: none; }
 
-/* SCALE, between the two tab strips. Deliberately not a tab: the banks and
-   views open onto the surface below and take its colour, and SCALE does not -
-   it sets a property of the pattern already on that surface. So it is a
-   segmented control sitting on the bar rather than a folder tab breaking the
-   rule, and the chosen division is an invert, which is how GEM said "this
-   one". */
-.seg {
-  display: flex;
-  align-items: center;
-  gap: 0;
-  flex: none;
-  margin-bottom: 2px;
-  border: 1px solid var(--ink);
-  background: var(--paper);
-}
-.seg-label {
-  font-size: 10px;
-  letter-spacing: 0.1em;
-  padding: 0 6px;
-  opacity: 0.75;
-  border-right: 1px solid var(--ink);
-  align-self: stretch;
-  display: flex;
-  align-items: center;
-}
-.seg-btn {
-  appearance: none;
-  background: var(--paper);
-  border: none;
-  border-left: 1px solid var(--ink);
-  color: var(--ink);
-  font: inherit;
-  font-size: 11px;
-  padding: 1px 7px;
-  cursor: pointer;
-}
-.seg-btn:first-of-type { border-left: none; }
-.seg-btn:hover:not(:disabled):not([aria-checked="true"]) { background: var(--face); }
-.seg-btn[aria-checked="true"] { background: var(--ink); color: var(--paper); }
-.seg-btn:disabled { opacity: 0.45; cursor: not-allowed; }
-/* currentColor, not --ink: the chosen division is inverted, and a black ring
-   inside a black button is no ring at all. */
-.seg-btn:focus-visible { outline: 1px solid currentColor; outline-offset: -3px; }
-/* Only a record the machine never wrote gets here - see refreshScalePicker. */
-.seg-odd { font-size: 10px; padding: 0 6px; border-left: 1px solid var(--ink); }
 .chart-tab {
   background: var(--face-dim);
   border: 1px solid var(--ink);
@@ -774,6 +729,46 @@ td.cell.editable.loud:hover { box-shadow: inset 0 0 0 2px var(--paper); }
 button.lamp:focus-visible { outline: 1px solid var(--ink); outline-offset: 2px; }
 /* Only ever seen on a record the machine never wrote - see relightDial(). */
 .dial-odd:not(:empty) { margin-left: 4px; font-size: 11px; }
+
+/* SCALE, in the readouts row between FLAM and LAST STEP. Four named divisions
+   are a list to pick from rather than a knob to sweep, so unlike the dials
+   beside it this is four buttons in a strip, and the chosen one is an invert -
+   which is how GEM said "this one", and what the pattern column and the
+   window tabs already do. The strip carries the rules between the divisions;
+   the box around it is the .readout's own border. */
+.seg {
+  display: flex;
+  align-items: stretch;
+  align-self: center;
+  border: 1px solid var(--ink);
+  background: var(--paper);
+}
+.seg-btn {
+  appearance: none;
+  background: var(--paper);
+  border: none;
+  border-left: 1px solid var(--ink);
+  color: var(--ink);
+  font: inherit;
+  font-size: 11px;
+  line-height: 1.35;
+  padding: 0 5px;
+  cursor: pointer;
+}
+span.seg-btn { cursor: default; }   /* a read-only chart draws spans */
+.seg-btn:first-child { border-left: none; }
+.seg-btn:hover:not(.on) { background: var(--face); }
+.seg-btn.on { background: var(--ink); color: var(--paper); }
+/* currentColor, not --ink: the chosen division is inverted, and a black ring
+   inside a black button is no ring at all. */
+.seg-btn:focus-visible { outline: 1px solid currentColor; outline-offset: -3px; }
+/* Only a record the machine never wrote gets here - see relightScale(). */
+.seg-odd:not(:empty) {
+  font-size: 10px;
+  padding: 0 5px;
+  border-left: 1px solid var(--ink);
+  align-self: center;
+}
 
 /* A GEM progress bar: solid ink filling a white trough, no animation. */
 progress {
