@@ -433,6 +433,11 @@ table.matrix-grid { border-collapse: collapse; }
 /* Centred in its box, which only shows below the breakpoint - above it the
    table is the full width and there is no slack to centre in. */
 table.matrix-grid { margin-inline: auto; }
+/* An empty column mirroring the row labels on the far side, so the block of
+   cells is centred in the box rather than pushed off it: the labels take a
+   column's worth on the left, and without this the cells end flush right with
+   nothing balancing them. */
+.matrix-gutter { padding: 0; }
 /* line-height 0 on the cells that hold a button, because a table cell keeps a
    line box under an inline-level child and that was holding them a pixel or
    two apart in both directions. Not on the headers: they hold text, and a
@@ -493,7 +498,7 @@ table.matrix-grid { margin-inline: auto; }
    should keep their natural size and the grid scroll instead. */
 @media (min-width: 761px) {
   table.matrix-grid { width: 100%; table-layout: fixed; }
-  .matrix-corner, .matrix-row-head { width: 2.4rem; }
+  .matrix-corner, .matrix-row-head, .matrix-gutter { width: 2.4rem; }
   /* Height follows width rather than being set: the column width is whatever
      is left after the labels, and only the browser knows it. aspect-ratio is
      how a cell stays square through that. */
@@ -1148,6 +1153,12 @@ dialog::backdrop {
      a port list with one port in it stood 256px high around 17px of content.
      Stacked, the boxes should be exactly as tall as what is in them. */
   .row > * { width: 100%; flex: none; }
+  /* Except these two. Dump and Restore are the same grid asking opposite
+     questions and are read against each other, so they stay beside each other
+     however narrow it gets - the grids shrink and scroll inside their boxes
+     rather than one dropping below the other. */
+  .transfer-row { flex-direction: row; }
+  .transfer-row > * { width: auto; flex: 1 1 0; min-width: 0; }
   /* Each panel gets its own height. The panels normally share one grid cell so
      the dialog is sized by the largest and stops resizing as you switch tabs -
      worth it on a wide window, where a centred box jumping about is very

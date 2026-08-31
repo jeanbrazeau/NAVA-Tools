@@ -953,6 +953,7 @@ function buildMatrix(id) {
     th.addEventListener('click', () => toggleGroup(columnCells(id, slot)));
     head.appendChild(th);
   }
+  head.appendChild(document.createElement('th')).className = 'matrix-gutter';
   const thead = document.createElement('thead');
   thead.appendChild(head);
   table.appendChild(thead);
@@ -972,6 +973,7 @@ function buildMatrix(id) {
       const n = bank * protocol.PTRN_PER_BANK + slot;
       row.appendChild(matrixCell(n, protocol.patternLabel(n), 'pattern'));
     }
+    row.appendChild(document.createElement('td')).className = 'matrix-gutter';
     body.appendChild(row);
   }
 
@@ -986,6 +988,7 @@ function buildMatrix(id) {
   for (let track = 0; track < protocol.MAX_TRACK; track += 1) {
     tracks.appendChild(matrixCell(track, `track ${track + 1}`, 'track'));
   }
+  tracks.appendChild(document.createElement('td')).className = 'matrix-gutter';
   body.appendChild(tracks);
 
   table.appendChild(body);
