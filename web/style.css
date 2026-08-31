@@ -1067,6 +1067,15 @@ dialog::backdrop {
      a port list with one port in it stood 256px high around 17px of content.
      Stacked, the boxes should be exactly as tall as what is in them. */
   .row > * { width: 100%; flex: none; }
+  /* Each panel gets its own height. The panels normally share one grid cell so
+     the dialog is sized by the largest and stops resizing as you switch tabs -
+     worth it on a wide window, where a centred box jumping about is very
+     visible. Stacked, it costs Device and Transfer a screenful of nothing
+     underneath them to match Browse, and the box is not centred anyway. So the
+     hidden ones go back to being hidden rather than merely invisible. */
+  .panels { display: block; }
+  .panels > section[hidden] { display: none !important; }
+
   /* One column, and the setup record moves to the bottom - under the pattern
      editor rather than above it. See .browse-row. */
   .browse-row {
