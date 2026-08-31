@@ -930,6 +930,10 @@ dialog::backdrop {
   /* The tabs and the MIDI accessories stop fitting on one line well before the
      panels do, so the header stacks first. */
   .shell-head { flex-wrap: wrap; }
-  .shell-status { margin-left: 0; padding-bottom: 8px; }
+  /* The auto margin stays, so Enable MIDI keeps the right edge whether the
+     accessories are still sharing the tabs' line or have wrapped below them.
+     Left-aligning it under the tabs put the one button in the header nowhere
+     in particular; against the right edge it is where it was, one line down. */
+  .shell-status { padding-bottom: 8px; }
   .tabs { flex-wrap: wrap; }
 }
