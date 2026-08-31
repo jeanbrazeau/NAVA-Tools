@@ -73,6 +73,14 @@ def test_plain_refuses_every_debug_route(plain, path):
     assert status == 404
 
 
+@pytest.mark.parametrize("path", ["/", "/js/app.js", "/style.css"])
+def test_nothing_is_cacheable(plain, path):
+    """A stale js module in the browser's cache reads as an edit that did not
+    take, so every response says no-store - static files included."""
+    with urllib.request.urlopen(plain + path, timeout=5) as response:
+        assert response.headers.get("Cache-Control") == "no-store"
+
+
 def test_plain_still_serves_the_app(plain):
     status, body, kind = get(f"{plain}/js/app.js")
     assert status == 200

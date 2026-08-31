@@ -150,12 +150,20 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         self.send_response(code)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(payload)))
-        # Debug bytes are regenerated per run and the page is rewritten per
-        # request; a cached copy of either is a confusing morning.
-        self.send_header("Cache-Control", "no-store")
         self.end_headers()
         if body:
             self.wfile.write(payload)
+
+    def end_headers(self):
+        # Every response, including the static ones SimpleHTTPRequestHandler
+        # serves out of web/. That handler sends Last-Modified and no
+        # Cache-Control, which lets a browser hold an edited js module in its
+        # own cache and show the previous version of the app - a change that
+        # "did not work" until a hard reload. Debug bytes are regenerated per
+        # run and the page is rewritten per request, so those must not be
+        # cached either.
+        self.send_header("Cache-Control", "no-store")
+        super().end_headers()
 
     def log_message(self, fmt, *args):  # quieter than the default
         sys.stderr.write("  %s\n" % (fmt % args))
