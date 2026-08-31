@@ -12,7 +12,7 @@ over Web MIDI.
 > `web/` locally:
 >
 > ```bash
-> python3 -m http.server -d web 8000
+> uv run python tools/devserver.py        # http://127.0.0.1:8000
 > ```
 
 It needs a **Chromium-based browser** — Chrome, Edge, Opera, Brave, Arc, Helium,
@@ -388,9 +388,37 @@ To work on it locally, serve the directory — ES modules will not load over
 `file://`, and Web MIDI needs a secure context, which `localhost` counts as:
 
 ```bash
-python3 -m http.server -d web 8000
+uv run python tools/devserver.py            # what Pages would serve, byte for byte
+uv run python tools/devserver.py --debug    # ...plus seeded .syx files
 ```
 
 Locally there is no `web/firmware/`, so the Firmware panel takes the hand-off
 path. That is the same path a visitor gets for any tag other than the deployed
 one, so it is the one worth testing by hand.
+
+### Debug mode
+
+`--debug` generates the `tests/make_samples.py` set, serves it under
+`/__debug__/`, and injects one script tag into `index.html` as it writes the
+response. The page comes up on **Browse** already holding a full backup, a
+single bank, the edge cases, a corrupt file and a firmware image, so the panel
+can be worked on without a Nava on the desk and without dragging eight files in
+after every reload. A black bar across the top says how many were seeded and
+offers a **reseed** button; it is the only thing on screen that is not the app.
+
+Files arrive through a synthetic drop on the dropzone rather than a back door
+into `app.js`: there is no debug branch in the shipped code, and seeding
+exercises the same ingestion path a dragged file takes.
+
+**It cannot be deployed**, and not because of a flag someone has to remember:
+
+- The harness is `tools/debug/seed.js`. `pages.yml` uploads `path: web`, so a
+  file outside that directory has no route into the artifact.
+- `web/index.html` on disk never mentions it. The script tag exists only in the
+  bytes the server writes to a socket, and only when `--debug` was passed.
+- Without `--debug` the server 404s every `/__debug__/` path, so running it in
+  front of a deployment still exposes nothing.
+
+`tests/test_devserver.py` holds each of those to its word — including that
+`pages.yml` still uploads only `web/` — and `tests/web/site.test.js` fails if
+anything under `web/` ever mentions the harness.

@@ -76,3 +76,31 @@ test('nothing is loaded from a third party', () => {
     );
   }
 });
+
+test('nothing the site publishes mentions the debug harness', () => {
+  // web/ is what pages.yml uploads. The seeding harness lives in tools/debug/
+  // and is injected by tools/devserver.py --debug as it writes the response, so
+  // a reference to it in here is one that would ship and then 404 in
+  // production - silently, since a module that fails to load says nothing.
+  const skip = new Set(['firmware', 'samples']);
+  const walk = (dir) => readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+    if (entry.isDirectory()) return skip.has(entry.name) ? [] : walk(join(dir, entry.name));
+    return [join(dir, entry.name)];
+  });
+  const offenders = walk(WEB).filter((path) => readFileSync(path, 'utf8').includes('__debug__'));
+  assert.deepEqual(offenders, [], 'debug references in the published directory');
+});
+
+test('the debug harness still has the app hook it seeds through', () => {
+  // tools/debug/seed.js hands files over as a synthetic drop rather than
+  // calling into app.js, so the only thing holding the two together is this
+  // element and this listener. Renaming either seeds nothing, with no error.
+  const harness = fileURLToPath(new URL('../../tools/debug/seed.js', import.meta.url));
+  const seed = readFileSync(harness, 'utf8');
+  for (const match of seed.matchAll(/getElementById\('([^']+)'\)/g)) {
+    assert.match(html, new RegExp(`id="${match[1]}"`), `seed.js wants #${match[1]}`);
+  }
+  const app = readFileSync(join(WEB, 'js', 'app.js'), 'utf8');
+  assert.match(app, /dropzone\.addEventListener\('drop'/,
+    'seed.js dispatches a drop on #dropzone; app.js no longer listens for one');
+});

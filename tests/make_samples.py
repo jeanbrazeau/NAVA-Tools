@@ -3,7 +3,9 @@
 Not fixtures - nothing asserts against these. They exist so the Browse and
 Detail views can be driven without a Nava on the desk, and so the cases with
 their own rendering branches (a short pattern, a shorter ext loop, a flam, a
-blank EEPROM slot, a corrupt record, a firmware image) are all one drag away.
+blank EEPROM slot, a corrupt record, a firmware image) are all one drag away -
+or no drag at all, since `tools/devserver.py --debug` calls build() and hands
+the result to the page.
 
 Seeded, so the same command always writes the same bytes and a screenshot taken
 today still matches one taken next month.
@@ -142,16 +144,21 @@ def track_record(rng: random.Random, patterns: list[int]) -> bytes:
     return bytes(data)
 
 
-def write(path: str, blocks: list[bytes]) -> None:
+def write(path: str, blocks: list[bytes]) -> str:
     with open(path, "wb") as handle:
         for block in blocks:
             handle.write(block)
     print(f"  {os.path.basename(path):<26} {os.path.getsize(path):>7} bytes")
+    return os.path.basename(path)
 
 
-def main() -> None:
-    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    out = sys.argv[1] if len(sys.argv) > 1 else os.path.join(root, "samples")
+def build(out: str) -> list[str]:
+    """Write the sample set into `out` and return the filenames it wrote.
+
+    Listed in the order they are written, the full backup first: a browser being
+    seeded should settle on the file that has something in every list.
+    tools/devserver.py --debug is the other caller.
+    """
     os.makedirs(out, exist_ok=True)
     rng = random.Random(909)
 
@@ -172,7 +179,7 @@ def main() -> None:
         for t in range(protocol.MAX_TRACK)
     ]
     blocks.append(protocol.encode(protocol.NAVA_CONFIG_DMP, 0, config_record(rng)))
-    write(os.path.join(out, "full-backup.syx"), blocks)
+    full_backup = write(os.path.join(out, "full-backup.syx"), blocks)
 
     # One bank, the everyday case.
     blocks = [
@@ -181,17 +188,17 @@ def main() -> None:
         for i in range(protocol.PTRN_PER_BANK)
     ]
     blocks.append(protocol.encode(protocol.NAVA_CONFIG_DMP, 0, config_record(rng)))
-    write(os.path.join(out, "bank-c.syx"), blocks)
+    bank_c = write(os.path.join(out, "bank-c.syx"), blocks)
 
     # One pattern, for the smallest thing the Detail view can be pointed at.
-    write(os.path.join(out, "one-pattern.syx"), [
+    one_pattern = write(os.path.join(out, "one-pattern.syx"), [
         protocol.encode(protocol.NAVA_PTRN_DMP, 0,
                         pattern_record(rng, length=16, scale=24, accent=True, flams=2)),
     ])
 
     # Every branch the chart has: a short pattern, a triplet scale, an ext loop
     # shorter than the kit, a blank EEPROM slot, an empty pattern.
-    write(os.path.join(out, "edge-cases.syx"), [
+    edge_cases = write(os.path.join(out, "edge-cases.syx"), [
         protocol.encode(protocol.NAVA_PTRN_DMP, 0, pattern_record(rng, length=12, scale=12, accent=True)),
         protocol.encode(protocol.NAVA_PTRN_DMP, 1, pattern_record(rng, length=8, scale=16, flams=2)),
         protocol.encode(protocol.NAVA_PTRN_DMP, 2, pattern_record(rng, length=16, ext_tracks=4, stored_ext_length=9)),
@@ -206,7 +213,7 @@ def main() -> None:
     ])
 
     # No config record, so the ext lanes fall back to the power-on note map.
-    write(os.path.join(out, "no-config.syx"), [
+    no_config = write(os.path.join(out, "no-config.syx"), [
         protocol.encode(protocol.NAVA_PTRN_DMP, n, pattern_record(rng, ext_tracks=3))
         for n in range(4)
     ])
@@ -216,7 +223,7 @@ def main() -> None:
     good = protocol.encode(protocol.NAVA_PTRN_DMP, 0, pattern_record(rng, accent=True))
     damaged = bytearray(protocol.encode(protocol.NAVA_PTRN_DMP, 1, pattern_record(rng)))
     damaged[protocol.HEADERSIZE + 3] ^= 0x01   # flip a payload bit; the checksum catches it
-    write(os.path.join(out, "corrupt.syx"), [
+    corrupt = write(os.path.join(out, "corrupt.syx"), [
         good,
         bytes(damaged),
         protocol.encode(protocol.NAVA_CONFIG_DMP, 0, config_record(rng)),
@@ -224,7 +231,7 @@ def main() -> None:
 
     # A firmware image, so the classifier has something to refuse to restore.
     image = bytes((i * 7 + 3) & 0xFF for i in range(48000))
-    write(os.path.join(out, "firmware-0.99.syx"), [bootloader.encode_firmware(image)])
+    firmware = write(os.path.join(out, "firmware-0.99.syx"), [bootloader.encode_firmware(image)])
 
     # An Intel HEX, converted to a bootloader .syx on the way in.
     lines = []
@@ -236,6 +243,14 @@ def main() -> None:
     with open(os.path.join(out, "firmware.hex"), "w", encoding="ascii") as handle:
         handle.write("\n".join(lines) + "\n")
     print(f"  {'firmware.hex':<26} {os.path.getsize(os.path.join(out, 'firmware.hex')):>7} bytes")
+
+    return [full_backup, bank_c, one_pattern, edge_cases, no_config, corrupt,
+            firmware, "firmware.hex"]
+
+
+def main() -> None:
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    build(sys.argv[1] if len(sys.argv) > 1 else os.path.join(root, "samples"))
 
 
 if __name__ == "__main__":
