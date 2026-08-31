@@ -207,22 +207,24 @@ main {
 .row:last-child { margin-bottom: 0; }
 .row > * { flex: 1 1 20rem; min-width: 15rem; }
 
-/* The chart is the reason this panel exists, so it gets the room: the file
-   list is a picker and stops being more useful past its content width.
+/* The chart is the reason this panel exists, so it gets the whole width and
+   the top: sixteen steps across eleven voices is the widest thing in the app,
+   and every pixel taken off it for a file list is a pixel off the grid. The
+   file list and the setup record are both things you consult, not things you
+   work in, so they go underneath and share the line.
 
    A grid rather than the flex row the other panels use, because this one has
    three boxes in two different arrangements and flex can only reorder within a
-   line. Wide, the setup record sits under Files in the narrow column, beside
-   the chart it belongs to rather than on top of it. Stacked, it goes to the
-   bottom - under the pattern editor rather than between the file list and it,
-   because on one column the editor is what you came for and a wall of setup
-   text above it is a wall to scroll past. Named areas say both in two lines. */
+   line. Stacked, the setup record goes to the bottom - under the pattern
+   editor rather than between the file list and it, because on one column the
+   editor is what you came for and a wall of setup text above it is a wall to
+   scroll past. Named areas say both in two lines. */
 .browse-row {
   display: grid;
-  grid-template-columns: minmax(0, 15rem) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   grid-template-areas:
-    "files  detail"
-    "config detail";
+    "detail detail"
+    "files  config";
   align-content: start;
 }
 .browse-row > .col-files { grid-area: files; }

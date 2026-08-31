@@ -72,16 +72,20 @@ Loud and soft are compared against each instrument's own two levels, not a globa
 threshold: the 909's table is not uniform, and CH at 80 is soft while BD at 50 is
 loud.
 
+The chart takes the whole width and the top of the panel: sixteen steps across
+eleven voices is the widest thing in the app, and every pixel spent on a file
+list beside it is a pixel off the grid. The file list and the setup record are
+things you consult rather than work in, so they share the line underneath.
+
 **Config / setup** is its own window showing tempo, sync, channels, velocities
 and the ext note map. It shows itself rather than waiting to be picked: there
 is exactly one config record per backup and it is what the patterns are played
 through, so there is nothing to choose between and no reason for reading it to
 cost the chart its place on screen — which is what it used to do, as a row
 under the file list that swapped the Detail pane over. A file carrying no
-config record gets no window at all rather than an empty one. Wide, it sits
-under Files in the narrow column, beside the chart; stacked, it goes to the
-bottom under the pattern editor, because on one column the editor is what you
-came for and a wall of setup text above it is a wall to scroll past.
+config record gets no window at all rather than an empty one. Stacked, it goes
+to the bottom under the pattern editor, because on one column the editor is what
+you came for and a wall of setup text above it is a wall to scroll past.
 Track records are not viewable here — they are read, restored and saved like
 everything else, but `nava show FILE.syx "track 3"` is what prints one.
 
