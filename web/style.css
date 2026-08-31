@@ -32,6 +32,12 @@
      height would leave INST. three rows short of the column it sits beside. */
   --pattern-step: 22px;
   --ruler: 10px;            /* the numberless band the playhead handle sits in */
+  /* The PATTERN column down the side of the chart, and the gap between it and
+     the chart. The bank tabs are indented by their sum plus the column's own
+     rule, which is what puts bank A directly over the first lane label rather
+     than over the row numbers beside it. */
+  --pattern-col: 30px;
+  --detail-gap: 8px;
   /* The pinned status bar's height, read by both the bar itself and the room
      body leaves below its content so the bar never covers the last line. */
   --statusbar: 24px;
@@ -586,7 +592,7 @@ u { text-decoration-thickness: 1px; text-underline-offset: 2px; }
 /* The pattern column beside the chart. Deliberately NOT called .chart-row:
    that class is already on every <tr> in the grid, and giving those rows
    display:flex collapses the table's columns to slivers. */
-.detail-body { display: flex; align-items: flex-start; gap: 8px; }
+.detail-body { display: flex; align-items: flex-start; gap: var(--detail-gap); }
 /* margin-top clears the chart's own padding and the ruler band above the first
    lane, so button 1 starts level with the first row. */
 /* Tabs down the side, opening rightwards onto the same sheet the top ones open
@@ -601,7 +607,7 @@ u { text-decoration-thickness: 1px; text-underline-offset: 2px; }
   border-right: 1px solid var(--ink);
 }
 .pattern-btn {
-  width: 30px;
+  width: var(--pattern-col);
   height: var(--pattern-step);
   padding: 0;
   text-align: center;
@@ -676,7 +682,14 @@ pre.log .bad::before { content: "! "; }
   border-bottom: 1px solid var(--ink);
 }
 .control-bar .chart-tabs { margin-bottom: 0; border-bottom: none; }
-.control-bar .bank-buttons { flex: none; }
+/* Indented past the PATTERN column and the gap after it, so the left edge of
+   bank A lands on the left edge of ACCENT - the tabs open onto the lanes they
+   label, not onto the row numbers beside them. The 1px is the column's own
+   right-hand rule. */
+.control-bar .bank-buttons {
+  flex: none;
+  margin-left: calc(var(--pattern-col) + 1px + var(--detail-gap));
+}
 
 .chart-tab {
   background: var(--face-dim);
