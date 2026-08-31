@@ -3,12 +3,13 @@
  *
  * Everything a MIDI operation touches is async, so "busy" is a single flag
  * rather than a worker thread: the transfer loops await and the UI keeps
- * painting. They also poll a shouldStop between items, though nothing sets it
- * now that the Stop button is gone - see the note on shouldStop.
+ * painting. They also poll a shouldStop between items; the Flash button, turned
+ * into Stop for the duration, is what sets it - see the note on shouldStop.
  *
- * The two destructive actions go through a confirmation naming what is about to
- * be overwritten. Both write to a device that gives no confirmation of its own,
- * and neither can be undone.
+ * Restore goes through a confirmation naming what is about to be overwritten:
+ * it writes to a device that gives no confirmation of its own, and cannot be
+ * undone. Flash does not - the unit has to be put into bootloader mode by hand
+ * first, which is its own deliberate step.
  */
 
 import * as protocol from './protocol.js';
@@ -112,11 +113,10 @@ function setBusy(busy) {
   }
 }
 
-/* Nothing sets `stopRequested` any more - the Stop button that did is gone, so
- * a transfer now runs to the end once it starts. The flag and this callback
- * stay because the transfer loops take a shouldStop of some kind and poll it
- * between items; that is the seam to re-attach a control to, rather than
- * threading one back through every loop. */
+/* Set by pressing the Flash button while a flash is running (it reads Stop for
+ * the duration). The transfer loops poll this between items, so a stop lands
+ * cleanly at a message boundary; dump and restore still take the same callback
+ * but keep their buttons disabled while busy, so only flash can trip it. */
 const shouldStop = () => state.stopRequested;
 
 /** A yes/no gate for something that cannot be undone. */
@@ -1415,6 +1415,13 @@ $('firmware-input').addEventListener('change', async (event) => {
 });
 
 $('do-flash').addEventListener('click', async () => {
+  // While a flash is running this button reads Stop, and pressing it asks the
+  // transfer loop to break between messages - see the note on shouldStop.
+  if (state.busy) {
+    state.stopRequested = true;
+    $('do-flash').disabled = true; // one press is the whole request
+    return;
+  }
   if (!portsReady(false, 'progress-log')) return;
   const file = fileByName($('firmware-file').value);
   if (!file) {
@@ -1429,16 +1436,6 @@ $('do-flash').addEventListener('click', async () => {
     return;
   }
 
-  const seconds = Math.ceil((file.pages * DEFAULT_FLASH_DELAY_MS) / 1000);
-  const ok = await confirmDialog(
-    'Overwrite the firmware?',
-    `${file.name}: ${file.pages} pages, about ${seconds}s. The unit must already ` +
-      'be in bootloader mode — steps 1, 3 and 5 held while powering it on. ' +
-      'Interrupting this leaves it unable to boot until another image is flashed.',
-    'Flash',
-  );
-  if (!ok) return;
-
   // The file's own messages, not a re-encode of its decoded image: library.load
   // already proved they decode, and sending them verbatim means a released .syx
   // reaches the bootloader byte for byte as it was published.
@@ -1451,6 +1448,10 @@ $('do-flash').addEventListener('click', async () => {
   }
 
   setBusy(true);
+  // setBusy disabled this button along with the others; hand it back as the
+  // way out of the transfer it just started.
+  $('do-flash').disabled = false;
+  $('do-flash').textContent = 'Stop';
   log('progress-log', `flashing ${messages.length} messages at ${DEFAULT_FLASH_DELAY_MS}ms…`);
   const outcome = await transfer.flash(state.ports, messages, DEFAULT_FLASH_DELAY_MS, {
     progress: (done, total, label) => {
@@ -1461,6 +1462,7 @@ $('do-flash').addEventListener('click', async () => {
   });
   for (const failure of outcome.failures) log('progress-log', failure, true);
   if (outcome.ok) log('progress-log', 'sent. The unit restarts on its own.');
+  $('do-flash').textContent = 'Flash';
   setBusy(false);
 });
 
