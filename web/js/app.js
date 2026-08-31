@@ -1015,7 +1015,7 @@ $('select-none').addEventListener('click', () => selectAllDump(false));
 /* ---------- transfer ---------- */
 
 $('do-dump').addEventListener('click', async () => {
-  if (!portsReady(true, 'transfer-log')) return;
+  if (!portsReady(true, 'progress-log')) return;
 
   let items;
   try {
@@ -1025,11 +1025,11 @@ $('do-dump').addEventListener('click', async () => {
       config: $('dump-config').checked,
     });
   } catch (error) {
-    log('transfer-log', error.message, true);
+    log('progress-log', error.message, true);
     return;
   }
   if (!items.length) {
-    log('transfer-log', 'nothing selected', true);
+    log('progress-log', 'nothing selected', true);
     return;
   }
 
@@ -1037,35 +1037,35 @@ $('do-dump').addEventListener('click', async () => {
   if (!target) return;
 
   setBusy(true);
-  log('transfer-log', `dumping ${items.length} item(s). ${SYSEX_PAGE_HINT}`);
+  log('progress-log', `dumping ${items.length} item(s). ${SYSEX_PAGE_HINT}`);
   const outcome = await transfer.backup(state.ports, items, DEFAULT_TIMEOUT, DEFAULT_RETRIES, {
     progress: (done, total, label) => {
-      setProgress('transfer-progress', done, total);
+      setProgress('progress-bar', done, total);
       status(`${done}/${total}  ${label}`);
     },
     shouldStop,
   });
 
-  for (const failure of outcome.failures) log('transfer-log', failure, true);
+  for (const failure of outcome.failures) log('progress-log', failure, true);
   if (outcome.collected.length) {
     await writeFile(target, outcome.collected);
     addFile(target.name, outcome.collected);
-    log('transfer-log', `wrote ${target.name} (${outcome.collected.length} bytes)`);
+    log('progress-log', `wrote ${target.name} (${outcome.collected.length} bytes)`);
   } else {
-    log('transfer-log', 'nothing came back; the file was not written', true);
+    log('progress-log', 'nothing came back; the file was not written', true);
   }
   setBusy(false);
 });
 
 $('do-restore').addEventListener('click', async () => {
-  if (!portsReady(true, 'transfer-log')) return;
+  if (!portsReady(true, 'progress-log')) return;
   const file = fileByName($('restore-file').value);
   if (!file) {
-    log('transfer-log', 'no backup selected', true);
+    log('progress-log', 'no backup selected', true);
     return;
   }
   if (file.kind !== library.KIND_BACKUP) {
-    log('transfer-log', `${file.name} is not a backup — refusing to send it`, true);
+    log('progress-log', `${file.name} is not a backup — refusing to send it`, true);
     return;
   }
 
@@ -1080,16 +1080,16 @@ $('do-restore').addEventListener('click', async () => {
 
   const dumps = file.items.map((i) => new protocol.NavaMessage(i.cmd, i.param, i.payload));
   setBusy(true);
-  log('transfer-log', `restoring ${dumps.length} item(s). ${SYSEX_PAGE_HINT}`);
+  log('progress-log', `restoring ${dumps.length} item(s). ${SYSEX_PAGE_HINT}`);
   const outcome = await transfer.restore(state.ports, dumps, DEFAULT_TIMEOUT, DEFAULT_RETRIES, {
     progress: (done, total, label) => {
-      setProgress('transfer-progress', done, total);
+      setProgress('progress-bar', done, total);
       status(`${done}/${total}  ${label}`);
     },
     shouldStop,
   });
-  for (const failure of outcome.failures) log('transfer-log', failure, true);
-  if (outcome.ok) log('transfer-log', 'restore complete');
+  for (const failure of outcome.failures) log('progress-log', failure, true);
+  if (outcome.ok) log('progress-log', 'restore complete');
   setBusy(false);
 });
 
@@ -1116,30 +1116,30 @@ async function loadDeployedFirmware() {
     // Nothing there, or nothing readable. Handled the same as absent.
   }
   if (!manifest) {
-    log('firmware-log', 'no image deployed with this page — drop a .syx on Browse to flash one');
+    log('progress-log', 'no image deployed with this page — drop a .syx on Browse to flash one');
     return;
   }
   try {
     await useBundled(manifest, state.repo);
   } catch (error) {
-    log('firmware-log', error.message ?? String(error), true);
+    log('progress-log', error.message ?? String(error), true);
   }
   // The fetch drives the same bar the flash does, and leaving it full would
   // have the panel opening on what looks like a finished transfer.
-  setProgress('firmware-progress', 0, 1);
+  setProgress('progress-bar', 0, 1);
   status('');
 }
 
 /** The copy deployed beside this page: same origin, no CORS. */
 async function useBundled(manifest, repo) {
   const bytes = await releases.downloadBundled(manifest, (done, total) => {
-    setProgress('firmware-progress', done, total);
+    setProgress('progress-bar', done, total);
     status(`${done}/${total} bytes`);
   });
   // offer() clears the log and writes the image's own details, so the release
   // it came from is logged after rather than before - it would be wiped.
   offer(manifest.file, bytes, manifest.published);
-  log('firmware-log', `${manifest.tag}, deployed with this page from ${repo}`);
+  log('progress-log', `${manifest.tag}, deployed with this page from ${repo}`);
 
   // The deployed copy is as new as the last time this site was built, and
   // someone about to flash should know if the firmware has moved on since.
@@ -1149,7 +1149,7 @@ async function useBundled(manifest, repo) {
     const newest = await releases.fetchRelease('latest', repo);
     if (newest.tag && newest.tag !== manifest.tag) {
       log(
-        'firmware-log',
+        'progress-log',
         `note: ${newest.tag} has been published since this page was built. ` +
           'Download it from the releases page and drop it on Browse to flash it.',
       );
@@ -1162,7 +1162,7 @@ async function useBundled(manifest, repo) {
 function offer(name, bytes, dated = null) {
   const file = addFile(name, bytes, dated);
   if (!file || file.kind !== library.KIND_FIRMWARE) {
-    log('firmware-log', `${name} is not a bootloader image — refusing to offer it`, true);
+    log('progress-log', `${name} is not a bootloader image — refusing to offer it`, true);
     return;
   }
   // Setting .value in script does not fire `change`, so the readout below is
@@ -1171,7 +1171,7 @@ function offer(name, bytes, dated = null) {
   showImageDetails();
 }
 
-/** What the picked image is, in the log under it.
+/** What the picked image is, in the panel's log.
  *
  * This replaced an Inspect button. Inspecting was never a question anyone
  * answered no to - the numbers are the same every time for a given file, and
@@ -1180,15 +1180,21 @@ function offer(name, bytes, dated = null) {
  * else: it is cleared first, so what is on screen always describes the image
  * the Flash button would send rather than a pile of everything looked at
  * since.
+ *
+ * That log is now the panel's only one, shared with dump and restore, so
+ * picking an image also clears whatever a transfer left there. That is the
+ * right way round: the clear is what keeps the readout describing the image in
+ * hand, and a finished transfer's log is history the moment you go looking at
+ * firmware instead.
  */
 function showImageDetails() {
-  clearLog('firmware-log');
+  clearLog('progress-log');
   const file = fileByName($('firmware-file').value);
   if (!file) {
-    log('firmware-log', 'no image selected');
+    log('progress-log', 'no image selected');
     return;
   }
-  for (const line of describeFile(file).split('\n')) log('firmware-log', line);
+  for (const line of describeFile(file).split('\n')) log('progress-log', line);
 }
 
 /* Other… opens a file picker instead of naming an image.
@@ -1232,17 +1238,17 @@ $('firmware-input').addEventListener('change', async (event) => {
 });
 
 $('do-flash').addEventListener('click', async () => {
-  if (!portsReady(false, 'firmware-log')) return;
+  if (!portsReady(false, 'progress-log')) return;
   const file = fileByName($('firmware-file').value);
   if (!file) {
-    log('firmware-log', 'no image selected', true);
+    log('progress-log', 'no image selected', true);
     return;
   }
   // The header check is the whole reason library.classify exists: a backup and
   // a firmware image are both .syx, and sending the wrong one to a bootloader
   // is not a recoverable mistake.
   if (file.kind !== library.KIND_FIRMWARE) {
-    log('firmware-log', `${file.name} is not a firmware image — refusing to flash it`, true);
+    log('progress-log', `${file.name} is not a firmware image — refusing to flash it`, true);
     return;
   }
 
@@ -1263,21 +1269,21 @@ $('do-flash').addEventListener('click', async () => {
   try {
     messages = protocol.splitMessages(file.bytes);
   } catch (error) {
-    log('firmware-log', `cannot read ${file.name}: ${error.message ?? error}`, true);
+    log('progress-log', `cannot read ${file.name}: ${error.message ?? error}`, true);
     return;
   }
 
   setBusy(true);
-  log('firmware-log', `flashing ${messages.length} messages at ${DEFAULT_FLASH_DELAY_MS}ms…`);
+  log('progress-log', `flashing ${messages.length} messages at ${DEFAULT_FLASH_DELAY_MS}ms…`);
   const outcome = await transfer.flash(state.ports, messages, DEFAULT_FLASH_DELAY_MS, {
     progress: (done, total, label) => {
-      setProgress('firmware-progress', done, total);
+      setProgress('progress-bar', done, total);
       status(`${done}/${total}  ${label}`);
     },
     shouldStop,
   });
-  for (const failure of outcome.failures) log('firmware-log', failure, true);
-  if (outcome.ok) log('firmware-log', 'sent. The unit restarts on its own.');
+  for (const failure of outcome.failures) log('progress-log', failure, true);
+  if (outcome.ok) log('progress-log', 'sent. The unit restarts on its own.');
   setBusy(false);
 });
 
