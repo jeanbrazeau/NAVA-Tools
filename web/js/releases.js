@@ -17,9 +17,12 @@
  *
  * So there are two paths, in this order:
  *
- *   1. The copy deployed beside this page (`firmware/index.json`), which the
- *      Pages workflow downloads at deploy time where no CORS applies. Same
- *      origin, one click, no third party involved at all.
+ *   1. The copy committed beside this page (`firmware/index.json` and the .syx
+ *      it names), which the firmware repository's release workflow pushes into
+ *      web/firmware/ on every release (the Pages workflow downloads one at
+ *      deploy time only as a fallback, where no CORS applies). Same origin,
+ *      one click, no third party involved at all - and present in a plain
+ *      checkout, so a local server has it too.
  *   2. Anything else - an older tag, a fork, a release cut since the last
  *      deploy - hands off to an ordinary browser download and asks for the file
  *      back. GitHub serves assets as `Content-Disposition: attachment`, so a
@@ -149,11 +152,11 @@ async function byTitle(wanted, repo) {
   return null;
 }
 
-/** What the Pages workflow deployed beside this page, or null if there is none.
+/** The image shipped beside this page, or null if there is none.
  *
- * Absent on a local `python3 -m http.server`, and absent on the very first
- * deploy of a repository whose firmware has no releases yet, so a missing or
- * unparseable manifest is a plain "no bundled image" rather than an error. */
+ * Absent on a checkout whose firmware repository has published no releases
+ * yet, so a missing or unparseable manifest is a plain "no bundled image"
+ * rather than an error. */
 export async function bundled() {
   try {
     const response = await fetch('firmware/index.json', { cache: 'no-cache' });

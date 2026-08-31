@@ -171,11 +171,14 @@ header, so `fetch` on it fails in every browser. There is no header to ask for
 and no endpoint that behaves differently, and a CORS proxy is the wrong answer
 for a page that flashes firmware. So:
 
-- **`latest` uses the copy deployed beside the page.** The Pages workflow
-  downloads it at build time, where no CORS applies, and writes
-  `web/firmware/index.json` next to it. One click, same origin, no third party
-  in the path at all. If a newer release has been published since the site was
-  built, the log says so and names the tag.
+- **`latest` uses the copy committed beside the page.** The firmware
+  repository's release workflow pushes each published `.syx` into
+  `web/firmware/` with an `index.json` naming it, so the image is in the
+  checkout itself — served the same by GitHub Pages and by a local server.
+  (The Pages workflow still downloads one at deploy time as a fallback if
+  nothing is committed.) One click, same origin, no third party in the path at
+  all. If a newer release has been published since, the log says so and names
+  the tag.
 - **Any other tag hands off to the browser's own downloader** and asks for the
   file back by drag and drop. Two steps instead of one, which is the price of
   the paragraph above.
@@ -437,9 +440,10 @@ the side that would have to change.
 
 `web/` is plain ES modules and one stylesheet: no build step, no dependencies,
 nothing fetched from a CDN. `.github/workflows/pages.yml` uploads that directory
-to GitHub Pages, and on the way it downloads the current firmware release into
-`web/firmware/` so the Firmware panel is one click (see above for why that
-cannot happen in the browser).
+to GitHub Pages. The current firmware release lives in `web/firmware/`,
+committed there by the firmware repository's release workflow so the Firmware
+panel is one click (see above for why the page cannot fetch it itself); the
+Pages workflow downloads one at deploy time only when nothing is committed.
 
 **Nothing is published today, on purpose.** Two things stand between this
 repository and a live site:
@@ -461,9 +465,9 @@ uv run python tools/devserver.py            # what Pages would serve, byte for b
 uv run python tools/devserver.py --debug    # ...plus seeded .syx files
 ```
 
-Locally there is no `web/firmware/`, so the Firmware panel takes the hand-off
-path. That is the same path a visitor gets for any tag other than the deployed
-one, so it is the one worth testing by hand.
+Locally `web/firmware/` is served straight from the checkout, so `latest` works
+offline. Any tag other than the committed one takes the hand-off path, which is
+the one worth testing by hand.
 
 ### Debug mode
 

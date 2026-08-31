@@ -9,8 +9,10 @@
 # no bundler output to diverge from the source, and `python3 -m http.server` in
 # web/ is an exact local copy of production.
 #
-# NOT PUBLISHED AUTOMATICALLY. This runs only when someone presses "Run
-# workflow" on the Actions tab, so merging to master deploys nothing.
+# NOT PUBLISHED ON MERGE. This runs when someone presses "Run workflow" on the
+# Actions tab, and when the firmware repository's release workflow dispatches
+# it after committing a new image into web/firmware/ - so a firmware release
+# redeploys the site, but merging to master deploys nothing.
 #
 # To publish on every green master build instead, uncomment the workflow_run
 # trigger below. It waits for Tests rather than running in parallel with it: the
@@ -59,6 +61,14 @@ jobs:
       # the Firmware panel is one click. Anything else falls back to a browser
       # download - see the note at the top of web/js/releases.js.
       #
+      # web/firmware/ is normally already in the repository: the firmware
+      # release workflow commits each published image here and dispatches this
+      # deploy, so the checkout carries the current release and this step has
+      # nothing to do. The download below is the fallback for a checkout with
+      # no committed image - never overwrite a committed copy with a freshly
+      # downloaded one, because a failed download here would then delete an
+      # image that was fine.
+      #
       # Never fails the deploy: a firmware repository with no releases yet, or a
       # GitHub hiccup, should publish a site without a bundled image rather than
       # no site at all.
@@ -68,6 +78,11 @@ jobs:
           FIRMWARE_REPO: jeanbrazeau/Nava-Firmware
         run: |
           set -u
+          if [ -f web/firmware/index.json ]; then
+            echo "using the committed image:"
+            cat web/firmware/index.json
+            exit 0
+          fi
           mkdir -p web/firmware
           release=$(gh api "repos/$FIRMWARE_REPO/releases/latest" 2>/dev/null) || {
             echo "no published release in $FIRMWARE_REPO; deploying without one"
