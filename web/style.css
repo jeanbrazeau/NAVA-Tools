@@ -32,6 +32,9 @@
      height would leave INST. three rows short of the column it sits beside. */
   --pattern-step: 22px;
   --ruler: 10px;            /* the numberless band the playhead handle sits in */
+  /* The pinned status bar's height, read by both the bar itself and the room
+     body leaves below its content so the bar never covers the last line. */
+  --statusbar: 24px;
   --grid-height: calc(var(--pattern-step) * 16);
   --font: ui-monospace, "SF Mono", Menlo, Consolas, "DejaVu Sans Mono", monospace;
   --dither: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='2' height='2' shape-rendering='crispEdges'%3E%3Crect width='1' height='1'/%3E%3Crect x='1' y='1' width='1' height='1'/%3E%3C/svg%3E");
@@ -67,8 +70,11 @@ body {
   zoom: var(--scale);
   margin: 0;
   /* The viewport, in this element's own pre-scale units: 100vh would come out a
-     fifth short and leave the status bar floating above the bottom. */
+     fifth short and leave the page ending above the bottom of the window. */
   min-height: calc(100vh / var(--scale));
+  /* The status bar is fixed, so it is out of the flow and would sit on top of
+     whatever the page ends with. This is the room it needs back. */
+  padding-bottom: var(--statusbar);
   display: flex;
   flex-direction: column;
   color: var(--ink);
@@ -886,14 +892,40 @@ dialog::backdrop {
 
 /* ---------- status line ---------- */
 
+/* Pinned to the window, not parked at the end of the page. A status bar that
+   scrolls away is a status bar you have to go looking for, and what it carries
+   - whether the ports are open, what the last transfer did - is exactly what
+   you want in view while working somewhere else on the page.
+
+   Fixed inside a zoomed body: `zoom` scales the fixed box along with
+   everything else, so the height reserved for it below has to be in the same
+   pre-scale units the bar itself is measured in, which is what --statusbar is
+   for. inset rather than left/right/bottom separately - it spans the window. */
 .statusbar {
+  position: fixed;
+  inset: auto 0 0 0;
+  z-index: 10;
   display: flex;
   align-items: center;
+  /* One line, always. The height below is reserved as a fixed number, so a bar
+     that wrapped would grow past what the page has left for it and sit on the
+     content - which is what a narrow window did. */
+  flex-wrap: nowrap;
   gap: 12px;
   background: var(--paper);
   border-top: 1px solid var(--ink);
   padding: 3px 8px;
-  min-height: 24px;
+  height: var(--statusbar);
+}
+/* The connection state and the link are fixed facts and keep their width; the
+   transient message is the one thing here of unknown length, so it is the one
+   that gives way. */
+.statusbar > #connection, .status-right { flex: none; }
+#status {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .status-right { margin-left: auto; display: flex; align-items: center; gap: 12px; }
 

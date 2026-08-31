@@ -183,9 +183,15 @@ neither is reversible, and the unit gives no confirmation of its own. A firmware
 image and a backup are told apart by their SysEx header, so the page refuses to
 flash a backup or restore a firmware image.
 
-Stop cancels between items, never mid-item, so a cancel cannot leave a
-half-written record on the device. A flash is paced by scheduled MIDI timestamps
-rather than by a timer, so switching tabs mid-flash does not stall it.
+There is no way to stop a transfer once it starts — the Stop button is gone, so
+a dump, restore or flash runs to the end. The loops still poll a `shouldStop`
+between items, which is where a control would reattach; nothing sets it. A flash
+is paced by scheduled MIDI timestamps rather than by a timer, so switching tabs
+mid-flash does not stall it.
+
+The status bar is pinned to the bottom of the window and carries the connection
+state in its left corner — whether the ports are open is not something to scroll
+looking for, and it was competing with the panel tabs up in the header.
 
 ## The command line tool
 

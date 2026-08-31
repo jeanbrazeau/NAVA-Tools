@@ -2,8 +2,9 @@
  * look at what you have, move data, flash firmware.
  *
  * Everything a MIDI operation touches is async, so "busy" is a single flag
- * rather than a worker thread: the transfer loops await, the UI keeps painting,
- * and the Stop button is polled between items.
+ * rather than a worker thread: the transfer loops await and the UI keeps
+ * painting. They also poll a shouldStop between items, though nothing sets it
+ * now that the Stop button is gone - see the note on shouldStop.
  *
  * The two destructive actions go through a confirmation naming what is about to
  * be overwritten. Both write to a device that gives no confirmation of its own,
@@ -99,12 +100,16 @@ function setProgress(id, done, total) {
 function setBusy(busy) {
   state.busy = busy;
   state.stopRequested = false;
-  $('cancel').disabled = !busy;
   for (const id of ['do-dump', 'do-restore', 'do-download', 'do-flash', 'do-inspect']) {
     $(id).disabled = busy;
   }
 }
 
+/* Nothing sets `stopRequested` any more - the Stop button that did is gone, so
+ * a transfer now runs to the end once it starts. The flag and this callback
+ * stay because the transfer loops take a shouldStop of some kind and poll it
+ * between items; that is the seam to re-attach a control to, rather than
+ * threading one back through every loop. */
 const shouldStop = () => state.stopRequested;
 
 /** A yes/no gate for something that cannot be undone. */
@@ -1055,10 +1060,6 @@ $('do-flash').addEventListener('click', async () => {
 /* ---------- wiring ---------- */
 
 $('enable-midi').addEventListener('click', enableMidi);
-$('cancel').addEventListener('click', () => {
-  state.stopRequested = true;
-  status('stopping after the current item…');
-});
 
 // Leaving mid-transfer means an interrupted flash or a half-written restore, so
 // the tab asks - it is the one case where the browser's generic warning is the

@@ -37,7 +37,6 @@
       <button role="tab" aria-selected="false" aria-controls="panel-firmware" id="tab-firmware"><u>F</u>IRMWARE</button>
     </nav>
     <div class="shell-status">
-      <span id="connection" class="pill">MIDI not enabled</span>
       <button id="enable-midi" class="btn default">Enable MIDI</button>
     </div>
   </div>
@@ -225,10 +224,14 @@
 </div>
 </main>
 
+<!-- Pinned to the bottom of the window rather than sitting at the end of the
+     page, which is what a status bar is: the machine's state is not something
+     you should have to scroll to. The connection pill leads it, in the corner,
+     where it used to sit in the header competing with the panel tabs. -->
 <footer class="statusbar">
+  <span id="connection" class="pill">MIDI not enabled</span>
   <span id="status"></span>
   <span class="status-right">
-    <button id="cancel" class="btn small" disabled>Stop</button>
     <a href="https://github.com/jeanbrazeau/nava-tools" target="_blank" rel="noopener">GitHub</a>
   </span>
 </footer>
