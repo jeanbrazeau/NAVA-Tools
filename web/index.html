@@ -103,48 +103,54 @@
     </fieldset>
 
 
-    <!-- Backup and restore, on the panel with the ports they run over. What
-         the unit has to be doing for these is different from flashing, so it
-         is said here rather than folded into the box at the top. -->
-    <fieldset class="group">
-      <legend>DUMP patterns from NAVA</legend>
-      <p>
-        The unit must be stopped and on the SysEx config page:
-        <kbd>SHIFT</kbd> + <kbd>TEMPO</kbd> to <code>type / select</code>. That
-        is where the firmware listens; anywhere else, requests are ignored.
-      </p>
-      <!-- Banks across, patterns down, built by app.js - 128 cells is not
-           something to write out by hand, and the labels come from the same
-           protocol helpers the rest of the app reads them from. -->
-      <div id="dump-matrix" class="matrix"></div>
-      <div id="dump-tracks" class="matrix matrix-strip"></div>
-      <label class="check"><input id="dump-config" type="checkbox" checked> Config record</label>
-      <div class="buttons">
-        <button id="select-all" class="btn" type="button">Select all</button>
-        <button id="select-none" class="btn" type="button">Select none</button>
-        <button id="do-dump" class="btn primary">Dump</button>
-      </div>
-    </fieldset>
-
-    <fieldset class="group">
-      <legend>RESTORE patterns to NAVA</legend>
-      <label class="field">Backup
-        <select id="restore-file"><option value="">— load a .syx under Browse —</option></select>
-      </label>
-      <p class="muted">Overwrites the patterns, tracks and setup the file names. Not reversible.</p>
-      <div class="buttons"><button id="do-restore" class="btn">Restore</button></div>
-    </fieldset>
-
-    <!-- One Progress box for the panel, at the foot of it: flashing and
-         dumping never run at once - the buttons for both are disabled while
-         either is going - so a second box only ever meant one of them sat
-         empty. It is last because that is the direction the panel reads, and
-         both the things that write to it are above it. -->
+    <!-- One Progress box for the panel: flashing and dumping never run at once
+         - the buttons for both are disabled while either is going - so a second
+         box only ever meant one of them sat empty. It sits between the firmware
+         controls and the pattern ones, in reach of both. -->
     <fieldset class="group">
       <legend>Progress</legend>
       <progress id="progress-bar" value="0" max="1"></progress>
       <pre id="progress-log" class="paper log"></pre>
     </fieldset>
+
+    <!-- Dump and restore side by side: the same grid asking two questions -
+         what to take off the unit, and what to put back - and the answer to
+         one is usually read against the other. -->
+    <div class="row">
+      <fieldset class="group">
+        <legend>DUMP patterns from NAVA</legend>
+        <p>
+          The unit must be stopped and on the SysEx config page:
+          <kbd>SHIFT</kbd> + <kbd>TEMPO</kbd> to <code>type / select</code>.
+        </p>
+        <!-- Banks down the side, the sixteen slots across, and the tracks as
+             a last row of the same columns - built by app.js. -->
+        <div id="dump-matrix" class="matrix"></div>
+        <label class="check"><input id="dump-config" type="checkbox" checked> Config record</label>
+        <div class="buttons">
+          <button id="dump-all" class="btn" type="button">Select all</button>
+          <button id="dump-none" class="btn" type="button">Select none</button>
+          <button id="do-dump" class="btn primary">Dump</button>
+        </div>
+      </fieldset>
+
+      <fieldset class="group">
+        <legend>RESTORE patterns to NAVA</legend>
+        <label class="field">Backup
+          <select id="restore-file"><option value="">— load a .syx under Browse —</option></select>
+        </label>
+        <!-- Same grid, but only what the chosen file actually holds is
+             selectable - see syncRestoreMatrix. -->
+        <div id="restore-matrix" class="matrix"></div>
+        <label class="check"><input id="restore-config" type="checkbox" checked> Config record</label>
+        <p class="muted">Overwrites what it sends, on the unit. Not reversible.</p>
+        <div class="buttons">
+          <button id="restore-all" class="btn" type="button">Select all</button>
+          <button id="restore-none" class="btn" type="button">Select none</button>
+          <button id="do-restore" class="btn primary">Restore</button>
+        </div>
+      </fieldset>
+    </div>
   </section>
 
 

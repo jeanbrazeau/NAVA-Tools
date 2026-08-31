@@ -454,11 +454,21 @@ table.matrix-grid { border-collapse: separate; border-spacing: 2px; }
   cursor: pointer;
 }
 .matrix-cell.on { background: var(--ink); }
+/* A slot the chosen backup has nothing in. Hollow and dashed rather than
+   hidden, so the grid keeps its shape and A5 is in the same place whichever
+   file is loaded - the same reason Browse disables an empty PATTERN button
+   instead of dropping it. */
+.matrix-cell:disabled {
+  border-style: dashed;
+  opacity: 0.4;
+  cursor: not-allowed;
+}
 .matrix-cell:hover { box-shadow: inset 0 0 0 2px var(--face-dim); }
 .matrix-cell:focus-visible { outline: 1px solid currentColor; outline-offset: -4px; }
-/* The track row is one line of the same cells, so it keeps the grid's metrics
-   and sits under the patterns as another row of the same thing. */
-.matrix-strip { margin-bottom: 10px; }
+/* The tracks are the last row of the same table, so they inherit the grid's
+   metrics and sit under the pattern columns they line up with. A rule above
+   them says they are a different thing being counted. */
+.matrix-tracks .matrix-cell { border-top-width: 2px; }
 
 /* The image list and Flash on one line. The list takes every spare pixel, so
    the button ends up against the right-hand edge without being pushed there -

@@ -372,6 +372,10 @@ function refreshFiles() {
 
   fillSelect($('restore-file'), state.files.filter((f) => f.kind === library.KIND_BACKUP),
     '— load a .syx under Browse —');
+  // Filling the list can change which file is selected - a dropped backup
+  // becomes the chosen one - and the grid under it has to follow, since
+  // fillSelect assigns .value in script and that fires no change event.
+  syncRestoreMatrix();
   // Names only for the image picker: picking one prints its size, pages and
   // date into the log underneath, so repeating them in the option is the same
   // sentence twice and a very wide select. The backup picker keeps its summary
@@ -891,46 +895,48 @@ function fileDate(file) {
  * panel stopped needing it, having no text to parse.
  */
 
-/** Toggle one cell, or set it. `on` omitted flips it. */
+/** Toggle one cell, or set it. `on` omitted flips it. A disabled cell is one
+ *  the file has nothing in, and stays where it is. */
 function setCell(cell, on = null) {
+  if (cell.disabled) return;
   const now = on === null ? !cell.classList.contains('on') : on;
   cell.classList.toggle('on', now);
   cell.setAttribute('aria-pressed', String(now));
 }
 
-const dumpCells = (id) => [...$(id).querySelectorAll('.matrix-cell')];
+const cellsIn = (id) => [...$(id).querySelectorAll('.matrix-cell')];
 
-/** Which patterns are chosen, as the 0..127 numbers transfer.selections wants,
- *  in bank-then-slot order so a dump arrives the way the panel is laid out. */
-function chosenPatterns() {
-  return dumpCells('dump-matrix')
-    .filter((c) => c.classList.contains('on'))
-    .map((c) => Number(c.dataset.n))
-    .sort((a, b) => a - b);
-}
+/** The numbers a matrix has chosen, ascending - which for the pattern grids is
+ *  bank-then-slot, the order the panel is laid out in. */
+const chosenOf = (cells) => cells
+  .filter((c) => c.classList.contains('on') && !c.disabled)
+  .map((c) => Number(c.dataset.n))
+  .sort((a, b) => a - b);
 
-function chosenTracks() {
-  return dumpCells('dump-tracks')
-    .filter((c) => c.classList.contains('on'))
-    .map((c) => Number(c.dataset.n))
-    .sort((a, b) => a - b);
-}
-
-function buildDumpMatrix() {
-  const wrap = $('dump-matrix');
+/** One grid, banks down the side and the sixteen slots across the top, with the
+ *  tracks as a last row of the same columns.
+ *
+ *  Banks vertical because there are eight of them and sixteen slots: the grid
+ *  comes out wider than tall, which is the shape of the panel it sits in. And
+ *  one table rather than two, because tracks are numbered 1-16 as well - they
+ *  line up under the pattern columns exactly, and a second table would only
+ *  have repeated the same sixteen headings underneath.
+ *
+ *  Built rather than written out: 144 cells is not something to keep in an HTML
+ *  file, and the labels come from the same protocol helper the rest of the app
+ *  reads them from. */
+function buildMatrix(id) {
   const table = document.createElement('table');
   table.className = 'matrix-grid';
 
   const head = document.createElement('tr');
   head.appendChild(document.createElement('th')).className = 'matrix-corner';
-  for (let bank = 0; bank < protocol.MAX_BANK; bank += 1) {
+  for (let slot = 0; slot < protocol.PTRN_PER_BANK; slot += 1) {
     const th = document.createElement('th');
     th.className = 'matrix-head';
-    th.textContent = bankLetter(bank);
-    th.title = `bank ${bankLetter(bank)} — click to select or clear the column`;
-    // A whole bank is the unit anyone actually thinks in, and sixteen clicks
-    // to get one is not a control. Same for a slot across every bank.
-    th.addEventListener('click', () => toggleGroup(columnCells(bank)));
+    th.textContent = String(slot + 1);
+    th.title = `slot ${slot + 1} in every bank — click to select or clear the column`;
+    th.addEventListener('click', () => toggleGroup(columnCells(id, slot)));
     head.appendChild(th);
   }
   const thead = document.createElement('thead');
@@ -938,50 +944,47 @@ function buildDumpMatrix() {
   table.appendChild(thead);
 
   const body = document.createElement('tbody');
-  for (let slot = 0; slot < protocol.PTRN_PER_BANK; slot += 1) {
+  for (let bank = 0; bank < protocol.MAX_BANK; bank += 1) {
     const row = document.createElement('tr');
     const label = document.createElement('th');
     label.className = 'matrix-head matrix-row-head';
-    label.textContent = String(slot + 1);
-    label.title = `pattern ${slot + 1} in every bank — click to select or clear the row`;
-    label.addEventListener('click', () => toggleGroup(rowCells(slot)));
+    label.textContent = bankLetter(bank);
+    label.title = `bank ${bankLetter(bank)} — click to select or clear the row`;
+    // A whole bank is the unit anyone actually thinks in, and sixteen clicks
+    // to get one is not a control. Same for a slot across every bank.
+    label.addEventListener('click', () => toggleGroup(rowCells(id, bank)));
     row.appendChild(label);
-    for (let bank = 0; bank < protocol.MAX_BANK; bank += 1) {
-      row.appendChild(matrixCell(bank * protocol.PTRN_PER_BANK + slot,
-        protocol.patternLabel(bank * protocol.PTRN_PER_BANK + slot)));
+    for (let slot = 0; slot < protocol.PTRN_PER_BANK; slot += 1) {
+      const n = bank * protocol.PTRN_PER_BANK + slot;
+      row.appendChild(matrixCell(n, protocol.patternLabel(n), 'pattern'));
     }
     body.appendChild(row);
   }
-  table.appendChild(body);
-  wrap.replaceChildren(table);
-}
 
-function buildTrackStrip() {
-  const wrap = $('dump-tracks');
-  const table = document.createElement('table');
-  table.className = 'matrix-grid';
-  const row = document.createElement('tr');
+  const tracks = document.createElement('tr');
+  tracks.className = 'matrix-tracks';
   const label = document.createElement('th');
   label.className = 'matrix-head matrix-row-head';
   label.textContent = 'TRK';
   label.title = 'every track — click to select or clear the row';
-  label.addEventListener('click', () => toggleGroup(dumpCells('dump-tracks')));
-  row.appendChild(label);
+  label.addEventListener('click', () => toggleGroup(trackCells(id)));
+  tracks.appendChild(label);
   for (let track = 0; track < protocol.MAX_TRACK; track += 1) {
-    row.appendChild(matrixCell(track, `track ${track + 1}`));
+    tracks.appendChild(matrixCell(track, `track ${track + 1}`, 'track'));
   }
-  const body = document.createElement('tbody');
-  body.appendChild(row);
+  body.appendChild(tracks);
+
   table.appendChild(body);
-  wrap.replaceChildren(table);
+  $(id).replaceChildren(table);
 }
 
-function matrixCell(n, title) {
+function matrixCell(n, title, kind) {
   const cell = document.createElement('td');
   const button = document.createElement('button');
   button.type = 'button';
   button.className = 'matrix-cell on';
   button.dataset.n = String(n);
+  button.dataset.kind = kind;
   button.title = title;
   button.setAttribute('aria-label', title);
   button.setAttribute('aria-pressed', 'true');
@@ -990,27 +993,65 @@ function matrixCell(n, title) {
   return cell;
 }
 
-const columnCells = (bank) => dumpCells('dump-matrix')
+// A column is one slot number - the patterns in it, and the track under them,
+// since track 7 sits beneath slot 7 in every bank.
+const columnCells = (id, slot) => cellsIn(id).filter((c) => (c.dataset.kind === 'track'
+  ? Number(c.dataset.n) === slot
+  : Number(c.dataset.n) % protocol.PTRN_PER_BANK === slot));
+const rowCells = (id, bank) => patternCells(id)
   .filter((c) => Math.floor(Number(c.dataset.n) / protocol.PTRN_PER_BANK) === bank);
-const rowCells = (slot) => dumpCells('dump-matrix')
-  .filter((c) => Number(c.dataset.n) % protocol.PTRN_PER_BANK === slot);
+const patternCells = (id) => cellsIn(id).filter((c) => c.dataset.kind === 'pattern');
+const trackCells = (id) => cellsIn(id).filter((c) => c.dataset.kind === 'track');
 
 /** All on unless they already all are, in which case all off - so a header is
- *  one control rather than two, and pressing it twice returns what was there. */
+ *  one control rather than two, and pressing it twice returns what was there.
+ *  Cells the file has nothing in do not count either way. */
 function toggleGroup(cells) {
-  const wanted = !cells.every((c) => c.classList.contains('on'));
-  for (const cell of cells) setCell(cell, wanted);
+  const live = cells.filter((c) => !c.disabled);
+  const wanted = !live.every((c) => c.classList.contains('on'));
+  for (const cell of live) setCell(cell, wanted);
 }
 
-function selectAllDump(on) {
-  for (const cell of [...dumpCells('dump-matrix'), ...dumpCells('dump-tracks')]) setCell(cell, on);
-  $('dump-config').checked = on;
+function setAll(id, on, checkbox) {
+  for (const cell of cellsIn(id)) setCell(cell, on);
+  $(checkbox).checked = on;
 }
 
-buildDumpMatrix();
-buildTrackStrip();
-$('select-all').addEventListener('click', () => selectAllDump(true));
-$('select-none').addEventListener('click', () => selectAllDump(false));
+/** Grey out everything the chosen backup does not carry, and select the rest.
+ *
+ * Restore can only send what is in the file, so a cell for a pattern the file
+ * has nothing in is not a choice - it is disabled rather than hidden, the same
+ * way the PATTERN buttons on Browse are, so the numbering never shifts and A5
+ * is in the same place whichever file is loaded. */
+function syncRestoreMatrix() {
+  const file = fileByName($('restore-file').value);
+  const items = file && file.kind === library.KIND_BACKUP ? file.items : [];
+  const has = (cmd) => new Set(items.filter((i) => i.cmd === cmd).map((i) => i.param));
+  const patterns = has(protocol.NAVA_PTRN_DMP);
+  const tracks = has(protocol.NAVA_TRACK_DMP);
+  const config = items.some((i) => i.cmd === protocol.NAVA_CONFIG_DMP);
+
+  for (const cell of cellsIn('restore-matrix')) {
+    {
+      const held = cell.dataset.kind === 'track' ? tracks : patterns;
+      const there = held.has(Number(cell.dataset.n));
+      cell.disabled = !there;
+      cell.classList.toggle('absent', !there);
+      cell.classList.toggle('on', there);
+      cell.setAttribute('aria-pressed', String(there));
+    }
+  }
+  $('restore-config').disabled = !config;
+  $('restore-config').checked = config;
+}
+
+buildMatrix('dump-matrix');
+buildMatrix('restore-matrix');
+$('dump-all').addEventListener('click', () => setAll('dump-matrix', true, 'dump-config'));
+$('dump-none').addEventListener('click', () => setAll('dump-matrix', false, 'dump-config'));
+$('restore-all').addEventListener('click', () => setAll('restore-matrix', true, 'restore-config'));
+$('restore-none').addEventListener('click', () => setAll('restore-matrix', false, 'restore-config'));
+$('restore-file').addEventListener('change', syncRestoreMatrix);
 
 /* ---------- transfer ---------- */
 
@@ -1020,8 +1061,8 @@ $('do-dump').addEventListener('click', async () => {
   let items;
   try {
     items = transfer.selections({
-      patterns: chosenPatterns(),
-      tracks: chosenTracks(),
+      patterns: chosenOf(patternCells('dump-matrix')),
+      tracks: chosenOf(trackCells('dump-matrix')),
       config: $('dump-config').checked,
     });
   } catch (error) {
@@ -1069,16 +1110,30 @@ $('do-restore').addEventListener('click', async () => {
     return;
   }
 
-  const counts = file.summary();
+  // Only what the grid has chosen, so a restore can put one bank back without
+  // writing over the other seven.
+  const patterns = new Set(chosenOf(patternCells('restore-matrix')));
+  const tracks = new Set(chosenOf(trackCells('restore-matrix')));
+  const wanted = file.items.filter((i) => {
+    if (i.cmd === protocol.NAVA_PTRN_DMP) return patterns.has(i.param);
+    if (i.cmd === protocol.NAVA_TRACK_DMP) return tracks.has(i.param);
+    if (i.cmd === protocol.NAVA_CONFIG_DMP) return $('restore-config').checked;
+    return false;
+  });
+  if (!wanted.length) {
+    log('progress-log', 'nothing selected to restore', true);
+    return;
+  }
+
   const ok = await confirmDialog(
     'Overwrite the unit?',
-    `${file.name} holds ${counts}. Restoring writes every one of them over what ` +
-      'is on the unit now. This cannot be undone.',
+    `Restoring ${wanted.length} of the ${file.items.length} record(s) in ${file.name}, ` +
+      'over what is on the unit now. This cannot be undone.',
     'Restore',
   );
   if (!ok) return;
 
-  const dumps = file.items.map((i) => new protocol.NavaMessage(i.cmd, i.param, i.payload));
+  const dumps = wanted.map((i) => new protocol.NavaMessage(i.cmd, i.param, i.payload));
   setBusy(true);
   log('progress-log', `restoring ${dumps.length} item(s). ${SYSEX_PAGE_HINT}`);
   const outcome = await transfer.restore(state.ports, dumps, DEFAULT_TIMEOUT, DEFAULT_RETRIES, {

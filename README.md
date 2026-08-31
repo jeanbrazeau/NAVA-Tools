@@ -32,13 +32,21 @@ added or removed, and a remembered index would silently point at a different
 device. Each box carries the state the unit has to be in for what that box does
 — bootloader mode beside the Flash controls, the SysEx config page beside Dump.
 
-**What gets dumped** is picked off a grid rather than described in a range
-expression: banks A–H across the top, the sixteen slots down the side, so a
-cell is where its label says it is and what is selected is visible without
-parsing anything. Everything starts selected, a bank letter or a slot number
-toggles its whole column or row, and Select all / Select none do the rest.
-`selection.js` is still there and still tested — it is the browser half of the
-CLI's `--patterns A1-A4` parsing, and only this panel stopped needing it.
+**What moves** is picked off a grid rather than described in a range
+expression: banks A–H down the side, the sixteen slots across the top, and the
+tracks as a last row of the same columns — track 7 sits under slot 7. A cell is
+where its label says it is, and what is selected is visible without parsing
+anything. Everything starts selected, a bank letter or a slot number toggles its
+whole row or column, and Select all / Select none do the rest. `selection.js` is
+still there and still tested — it is the browser half of the CLI's
+`--patterns A1-A4` parsing, and only this panel stopped needing it.
+
+Dump and Restore sit side by side with the same grid, because they ask the same
+question in two directions. Restore's grid shows only what the chosen backup
+actually holds: a slot the file has nothing in is dashed and unclickable rather
+than missing, so the numbering never shifts and A5 is in the same place
+whichever file is loaded. That is what makes a partial restore possible — put
+one bank back without writing over the other seven.
 
 **Browse** takes `.syx` files dropped on it and draws a pattern as the chart
 printed on the machine: the voices down the left in the panel's own order, the
