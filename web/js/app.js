@@ -20,7 +20,6 @@ import * as library from './library.js';
 import * as midi from './midi.js';
 import * as releases from './releases.js';
 import * as render from './render.js';
-import * as selection from './selection.js';
 import * as store from './store.js';
 import * as transfer from './transfer.js';
 
@@ -879,6 +878,140 @@ function fileDate(file) {
   return new Date(file.lastModified).toISOString().slice(0, 10);
 }
 
+/* ---------- what to dump ----------
+ *
+ * The same idea as the pattern chart on Browse: a grid you read the answer off
+ * rather than a box you describe it in. Banks across the top, the sixteen
+ * slots down the side, so a cell is where its label says it is - B7 is the
+ * seventh row of the second column - and what is selected is visible without
+ * parsing a range expression back into positions.
+ *
+ * selection.js still exists and is still tested: it is the browser half of the
+ * CLI's range parsing, and `nava dump --patterns A1-A4` needs it. Only this
+ * panel stopped needing it, having no text to parse.
+ */
+
+/** Toggle one cell, or set it. `on` omitted flips it. */
+function setCell(cell, on = null) {
+  const now = on === null ? !cell.classList.contains('on') : on;
+  cell.classList.toggle('on', now);
+  cell.setAttribute('aria-pressed', String(now));
+}
+
+const dumpCells = (id) => [...$(id).querySelectorAll('.matrix-cell')];
+
+/** Which patterns are chosen, as the 0..127 numbers transfer.selections wants,
+ *  in bank-then-slot order so a dump arrives the way the panel is laid out. */
+function chosenPatterns() {
+  return dumpCells('dump-matrix')
+    .filter((c) => c.classList.contains('on'))
+    .map((c) => Number(c.dataset.n))
+    .sort((a, b) => a - b);
+}
+
+function chosenTracks() {
+  return dumpCells('dump-tracks')
+    .filter((c) => c.classList.contains('on'))
+    .map((c) => Number(c.dataset.n))
+    .sort((a, b) => a - b);
+}
+
+function buildDumpMatrix() {
+  const wrap = $('dump-matrix');
+  const table = document.createElement('table');
+  table.className = 'matrix-grid';
+
+  const head = document.createElement('tr');
+  head.appendChild(document.createElement('th')).className = 'matrix-corner';
+  for (let bank = 0; bank < protocol.MAX_BANK; bank += 1) {
+    const th = document.createElement('th');
+    th.className = 'matrix-head';
+    th.textContent = bankLetter(bank);
+    th.title = `bank ${bankLetter(bank)} — click to select or clear the column`;
+    // A whole bank is the unit anyone actually thinks in, and sixteen clicks
+    // to get one is not a control. Same for a slot across every bank.
+    th.addEventListener('click', () => toggleGroup(columnCells(bank)));
+    head.appendChild(th);
+  }
+  const thead = document.createElement('thead');
+  thead.appendChild(head);
+  table.appendChild(thead);
+
+  const body = document.createElement('tbody');
+  for (let slot = 0; slot < protocol.PTRN_PER_BANK; slot += 1) {
+    const row = document.createElement('tr');
+    const label = document.createElement('th');
+    label.className = 'matrix-head matrix-row-head';
+    label.textContent = String(slot + 1);
+    label.title = `pattern ${slot + 1} in every bank — click to select or clear the row`;
+    label.addEventListener('click', () => toggleGroup(rowCells(slot)));
+    row.appendChild(label);
+    for (let bank = 0; bank < protocol.MAX_BANK; bank += 1) {
+      row.appendChild(matrixCell(bank * protocol.PTRN_PER_BANK + slot,
+        protocol.patternLabel(bank * protocol.PTRN_PER_BANK + slot)));
+    }
+    body.appendChild(row);
+  }
+  table.appendChild(body);
+  wrap.replaceChildren(table);
+}
+
+function buildTrackStrip() {
+  const wrap = $('dump-tracks');
+  const table = document.createElement('table');
+  table.className = 'matrix-grid';
+  const row = document.createElement('tr');
+  const label = document.createElement('th');
+  label.className = 'matrix-head matrix-row-head';
+  label.textContent = 'TRK';
+  label.title = 'every track — click to select or clear the row';
+  label.addEventListener('click', () => toggleGroup(dumpCells('dump-tracks')));
+  row.appendChild(label);
+  for (let track = 0; track < protocol.MAX_TRACK; track += 1) {
+    row.appendChild(matrixCell(track, `track ${track + 1}`));
+  }
+  const body = document.createElement('tbody');
+  body.appendChild(row);
+  table.appendChild(body);
+  wrap.replaceChildren(table);
+}
+
+function matrixCell(n, title) {
+  const cell = document.createElement('td');
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'matrix-cell on';
+  button.dataset.n = String(n);
+  button.title = title;
+  button.setAttribute('aria-label', title);
+  button.setAttribute('aria-pressed', 'true');
+  button.addEventListener('click', () => setCell(button));
+  cell.appendChild(button);
+  return cell;
+}
+
+const columnCells = (bank) => dumpCells('dump-matrix')
+  .filter((c) => Math.floor(Number(c.dataset.n) / protocol.PTRN_PER_BANK) === bank);
+const rowCells = (slot) => dumpCells('dump-matrix')
+  .filter((c) => Number(c.dataset.n) % protocol.PTRN_PER_BANK === slot);
+
+/** All on unless they already all are, in which case all off - so a header is
+ *  one control rather than two, and pressing it twice returns what was there. */
+function toggleGroup(cells) {
+  const wanted = !cells.every((c) => c.classList.contains('on'));
+  for (const cell of cells) setCell(cell, wanted);
+}
+
+function selectAllDump(on) {
+  for (const cell of [...dumpCells('dump-matrix'), ...dumpCells('dump-tracks')]) setCell(cell, on);
+  $('dump-config').checked = on;
+}
+
+buildDumpMatrix();
+buildTrackStrip();
+$('select-all').addEventListener('click', () => selectAllDump(true));
+$('select-none').addEventListener('click', () => selectAllDump(false));
+
 /* ---------- transfer ---------- */
 
 $('do-dump').addEventListener('click', async () => {
@@ -887,8 +1020,8 @@ $('do-dump').addEventListener('click', async () => {
   let items;
   try {
     items = transfer.selections({
-      patterns: $('dump-patterns').value.trim() ? selection.parsePatterns($('dump-patterns').value) : [],
-      tracks: $('dump-tracks').value.trim() ? selection.parseTracks($('dump-tracks').value) : [],
+      patterns: chosenPatterns(),
+      tracks: chosenTracks(),
       config: $('dump-config').checked,
     });
   } catch (error) {

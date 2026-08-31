@@ -23,18 +23,22 @@ decoding a backup works either way.
 
 ## The web app
 
-Three panels, in the order the work usually happens: pick the ports and flash if
-you are flashing, move the data, then look at what came back.
+Two panels: everything that talks to a unit, and everything that reads a file.
 
-**Device** picks the MIDI in and out ports, and flashes. The ports are
-remembered by name in the browser, not by index — an index moves whenever a USB
-device is added or removed, and a remembered index would silently point at a
-different device.
+**Device** is the whole conversation with the machine — the MIDI in and out
+ports, flashing, and dumping and restoring over SysEx. The ports are remembered
+by name in the browser, not by index: an index moves whenever a USB device is
+added or removed, and a remembered index would silently point at a different
+device. Each box carries the state the unit has to be in for what that box does
+— bootloader mode beside the Flash controls, the SysEx config page beside Dump.
 
-Each panel carries the state the unit has to be in for what that panel does —
-getting into the bootloader on Device, beside the Flash controls; the SysEx
-config page on Transfer, beside Dump and Restore. In one box together they were
-half instructions for a tab you were not on.
+**What gets dumped** is picked off a grid rather than described in a range
+expression: banks A–H across the top, the sixteen slots down the side, so a
+cell is where its label says it is and what is selected is visible without
+parsing anything. Everything starts selected, a bank letter or a slot number
+toggles its whole column or row, and Select all / Select none do the rest.
+`selection.js` is still there and still tested — it is the browser half of the
+CLI's `--patterns A1-A4` parsing, and only this panel stopped needing it.
 
 **Browse** takes `.syx` files dropped on it and draws a pattern as the chart
 printed on the machine: the voices down the left in the panel's own order, the
@@ -159,12 +163,11 @@ that a click happened — so undoing back to the start clears the marker, and
 saving moves the baseline. Save… writes the file out, and the tab asks before
 closing on top of unsaved work.
 
-**Transfer** dumps and restores. A dump asks where to save before it starts —
-a full backup takes minutes, and the browser will not open a file dialog that
-late.
+A dump asks where to save before it starts — a full backup takes minutes, and
+the browser will not open a file dialog that late.
 
-**Flashing lives on Device**, with the ports it flashes through, rather than in
-a tab of its own. There is nothing to choose beforehand: the firmware
+**Flashing lives on Device too**, with the ports it flashes through, rather
+than in a tab of its own. There is nothing to choose beforehand: the firmware
 repository's release workflow pushes each published `.syx` into `web/firmware/`
 with an `index.json` naming it, so the image is in the checkout itself — served
 the same by GitHub Pages and by a local server — and the page loads it on
@@ -190,7 +193,7 @@ every other file reaches this app. Add `?repo=owner/name` to the URL to point
 the version check at a fork; that is the browser's `NAVA_REPO`, and a link
 carries it.
 
-Transfer and flashing both name what they are about to overwrite and ask first —
+Restore and flashing both name what they are about to overwrite and ask first —
 neither is reversible, and the unit gives no confirmation of its own. A firmware
 image and a backup are told apart by their SysEx header, so the page refuses to
 flash a backup or restore a firmware image.
