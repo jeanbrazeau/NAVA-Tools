@@ -65,6 +65,15 @@ off — and shift-clicking sets the flam flag, which the level cycle has nowhere
 to put. Steps past the last one are not editable: the machine will never play
 them.
 
+Click and drag along a lane to lay down a run. The cell the drag starts on
+decides the value — it cycles, as a single click always did — and every cell the
+pointer then crosses is set to that same thing. Cycling each cell as it is
+crossed would make the result depend on whatever every step happened to hold
+already, which is not something anyone can aim, and laying down a run of hats is
+the whole point. The drag stays in the lane it began in; smearing across lanes
+is never what was meant, and on a grid this dense it would be easy to do by
+accident.
+
 Edits write into the record's own bytes and touch nothing else. That is the
 whole design, not tidiness: a backup round-trips through firmware revisions only
 because records are carried verbatim, padding included, so rebuilding one from a

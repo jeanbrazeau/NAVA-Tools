@@ -209,3 +209,71 @@ test('an edited record still encodes and decodes as a dump', () => {
   assert.equal(pattern.level(8, 0), 'normal');
   assert.equal(pattern.level(8, 4), 'normal');
 });
+
+/* The setters exist for dragging: the cell a stroke starts on decides a value
+ * and every cell it crosses is set to that same value, so painting needs to
+ * write a state rather than advance one. */
+
+test('setStep writes the state asked for, whatever the step held before', () => {
+  const payload = scratchRecord();
+  const CH = 14;
+  for (const from of ['off', 'normal', 'accent']) {
+    for (const to of ['off', 'normal', 'accent']) {
+      edit.setStep(payload, CH, 7, from);
+      assert.equal(edit.setStep(payload, CH, 7, to), to, `${from} -> ${to}`);
+      const decoded = records.decodePattern(payload);
+      const level = decoded.step(CH, 7).on ? decoded.level(CH, 7) : 'off';
+      assert.equal(level, to, `${from} -> ${to} read back`);
+    }
+  }
+});
+
+test('setStep on a gate lane gives the only level it has', () => {
+  const payload = scratchRecord();
+  // Asking a gate for 'normal' must not store a step that reads back as off:
+  // its soft level is 0, which is below its own accent threshold of 1.
+  assert.equal(edit.setStep(payload, 0, 5, 'normal'), 'accent');
+  const decoded = records.decodePattern(payload);
+  assert.equal(decoded.step(0, 5).on, true);
+  assert.equal(decoded.level(0, 5), 'accent');
+});
+
+test('setExtStep writes the state asked for, inversion included', () => {
+  const payload = scratchRecord();
+  for (const from of ['off', 'normal', 'accent']) {
+    for (const to of ['off', 'normal', 'accent']) {
+      edit.setExtStep(payload, 4, 2, from);
+      edit.setExtStep(payload, 4, 2, to);
+      assert.equal(records.decodePattern(payload).extStep(4, 2), to, `${from} -> ${to}`);
+    }
+  }
+});
+
+test('painting a run leaves every step in the stroke at one value', () => {
+  const payload = scratchRecord();
+  const OH = 15;
+  // A stroke: the first cell cycles, the rest take its result.
+  const wanted = edit.nextState(OH, edit.stepState(payload, OH, 0));
+  for (let step = 0; step < 8; step += 1) edit.setStep(payload, OH, step, wanted);
+
+  const decoded = records.decodePattern(payload);
+  for (let step = 0; step < 8; step += 1) {
+    const level = decoded.step(OH, step).on ? decoded.level(OH, step) : 'off';
+    assert.equal(level, wanted, `step ${step} did not take the stroke's value`);
+  }
+});
+
+test('setFlam is explicit, and still refuses a silent step', () => {
+  const payload = scratchRecord();
+  const LT = 10;
+  edit.setStep(payload, LT, 6, 'off');
+  assert.equal(edit.setFlam(payload, LT, 6, true), false, 'refused while off');
+  assert.equal(edit.flamState(payload, LT, 6), false);
+
+  edit.setStep(payload, LT, 6, 'normal');
+  assert.equal(edit.setFlam(payload, LT, 6, true), true);
+  assert.equal(edit.setFlam(payload, LT, 6, true), true, 'setting twice is idempotent');
+  assert.equal(records.decodePattern(payload).step(LT, 6).flam, true);
+  edit.setFlam(payload, LT, 6, false);
+  assert.equal(records.decodePattern(payload).step(LT, 6).flam, false);
+});

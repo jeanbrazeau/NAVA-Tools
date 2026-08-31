@@ -247,6 +247,7 @@ export function patternChart(pattern, { config = null, title = '', payload = nul
 
   if (payload) {
     root.classList.add('editable');
+    const owners = new Map();   // cell element -> which lane and step it is
     for (const [id, own] of cells) {
       const [kind, raw] = id.split(':');
       const index = Number(raw);
@@ -255,23 +256,93 @@ export function patternChart(pattern, { config = null, title = '', payload = nul
         // play it, so a click there would write a step that does not exist.
         if (i >= steps) return;
         cell.classList.add('editable');
-        cell.addEventListener('click', (event) => {
-          event.stopPropagation();
-          // Shift-click sets the flam flag, which is otherwise unreachable -
-          // the level cycle has nowhere to put a fourth state.
-          if (event.shiftKey && kind === 'inst') edit.toggleFlam(payload, index, i);
-          else if (kind === 'ext') edit.cycleExtStep(payload, index, i);
-          else if (kind === 'acc') edit.cycleAccent(payload, i);
-          else edit.cycleStep(payload, index, i);
-
-          current = decodePattern(payload);
-          repaint(kind, index);
-          if (kind !== 'acc') pick(kind, index);
-          else paint();
-          if (onEdit) onEdit();
-        });
+        cell.style.touchAction = 'none';   // a drag here is painting, not scrolling
+        owners.set(cell, { lane: id, kind, index, step: i });
       });
     }
+
+    /* Click and drag lays one value across a run of steps.
+     *
+     * The cell the gesture starts on decides that value - it cycles, as a
+     * single click always did - and every cell the pointer then crosses is set
+     * to the same thing. Cycling each cell as it is crossed would make the
+     * result depend on what every step happened to hold already, which is not
+     * something anyone can aim; laying down a run of hats is the whole point.
+     *
+     * The drag is confined to the lane it began in. Smearing across lanes is
+     * never what was meant, and on a grid this dense it would be easy to do by
+     * accident. */
+    let stroke = null;
+
+    const paintStep = (step) => {
+      if (!stroke || stroke.done.has(step)) return;
+      stroke.done.add(step);
+      stroke.write(step);
+      current = decodePattern(payload);
+      repaint(stroke.kind, stroke.index);
+      stroke.changed = true;
+    };
+
+    const extend = (event) => {
+      if (!stroke) return;
+      // elementFromPoint rather than pointerenter, because a touch pointer is
+      // captured by the element it started on and never enters another.
+      const at = owners.get(
+        document.elementFromPoint(event.clientX, event.clientY)?.closest?.('td.cell'),
+      );
+      if (at && at.lane === stroke.lane) paintStep(at.step);
+    };
+
+    const begin = (event) => {
+      if (event.button !== undefined && event.button !== 0) return;
+      const at = owners.get(event.target.closest?.('td.cell'));
+      if (!at) return;
+      event.preventDefault();
+
+      const { kind, index, step } = at;
+      let write;
+      if (event.shiftKey && kind === 'inst') {
+        // Shift paints the flam flag, which the level cycle has nowhere to put.
+        const wanted = !edit.flamState(payload, index, step);
+        write = (s) => edit.setFlam(payload, index, s, wanted);
+      } else if (kind === 'ext') {
+        const from = edit.extState(payload, index, step);
+        const wanted = from === 'off' ? 'normal' : from === 'normal' ? 'accent' : 'off';
+        write = (s) => edit.setExtStep(payload, index, s, wanted);
+      } else if (kind === 'acc') {
+        const wanted = edit.accentState(payload, step) === 'off' ? 'accent' : 'off';
+        write = (s) => edit.setAccent(payload, s, wanted);
+      } else {
+        const wanted = edit.nextState(index, edit.stepState(payload, index, step));
+        write = (s) => edit.setStep(payload, index, s, wanted);
+      }
+
+      stroke = { lane: at.lane, kind, index, write, done: new Set(), changed: false };
+      if (kind !== 'acc') pick(kind, index);
+      paintStep(step);
+      root.classList.add('painting');
+      // Bound only for the life of the stroke. A chart is rebuilt every time a
+      // different pattern is selected, so listeners left on the document would
+      // accumulate one set per pattern ever looked at.
+      document.addEventListener('pointermove', extend);
+      document.addEventListener('pointerup', end);
+      document.addEventListener('pointercancel', end);
+    };
+
+    function end() {
+      if (!stroke) return;
+      const changed = stroke.changed;
+      stroke = null;
+      root.classList.remove('painting');
+      document.removeEventListener('pointermove', extend);
+      document.removeEventListener('pointerup', end);
+      document.removeEventListener('pointercancel', end);
+      // Once per gesture, not once per cell: a sixteen-step drag should mark
+      // the file unsaved once, not rebuild the file list sixteen times.
+      if (changed && onEdit) onEdit();
+    }
+
+    root.addEventListener('pointerdown', begin);
   }
 
   for (const [id, row] of rows) {
@@ -368,5 +439,6 @@ function laneName(view, index, config) {
 
 export function chartLegend(editable = false) {
   const marks = 'loud  ■    soft  ▒    flam  ◤    beyond last step  ╱';
-  return editable ? `${marks}      click a cell to cycle it, shift-click for flam` : marks;
+  if (!editable) return marks;
+  return `${marks}\nclick cycles a step  ·  drag along a lane to lay down a run  ·  shift for flam`;
 }

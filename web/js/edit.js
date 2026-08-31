@@ -48,30 +48,41 @@ export function stepState(payload, instrument, step) {
   return velocity >= INST_VEL_HIGH[instrument] ? 'accent' : 'normal';
 }
 
-/** Advance one voice step through the cycle, returning its new state.
+/** Put one voice step into a given state, returning the state it ended in.
  *
  * The flam flag rides in bit 7 of the velocity byte and is left where it is:
  * it is a property of the step, not of the level, and clearing it because the
  * level moved would lose an edit the user never asked to undo. */
-export function cycleStep(payload, instrument, step) {
+export function setStep(payload, instrument, step, state) {
   const offset = OFF_INST + 2 * instrument;
-  const mask = readMask(payload, offset);
   const velocityAt = OFF_VELOCITY + instrument * NBR_STEP + step;
   const flam = payload[velocityAt] & FLAM_BIT;
-  const state = stepState(payload, instrument, step);
+  // A gate lane has no soft level to hold, so asking for one gives the only
+  // level it has rather than a step that reads back as something else.
+  const wanted = state === 'normal' && isGate(instrument) ? 'accent' : state;
 
-  if (state === 'off') {
-    writeMask(payload, offset, mask | bit(step));
-    const level = isGate(instrument) ? INST_VEL_HIGH[instrument] : INST_VEL_LOW[instrument];
-    payload[velocityAt] = level | flam;
-    return isGate(instrument) ? 'accent' : 'normal';
+  if (wanted === 'off') {
+    writeMask(payload, offset, readMask(payload, offset) & ~bit(step));
+    return 'off';
   }
-  if (state === 'normal') {
-    payload[velocityAt] = INST_VEL_HIGH[instrument] | flam;
-    return 'accent';
-  }
-  writeMask(payload, offset, mask & ~bit(step));
+  writeMask(payload, offset, readMask(payload, offset) | bit(step));
+  const level = wanted === 'accent' ? INST_VEL_HIGH[instrument] : INST_VEL_LOW[instrument];
+  payload[velocityAt] = level | flam;
+  return wanted;
+}
+
+/** The state after this one in the machine's cycle: off -> soft -> loud -> off,
+ *  with the soft rung missing on a lane that has no soft level. */
+export function nextState(instrument, state) {
+  if (state === 'off') return isGate(instrument) ? 'accent' : 'normal';
+  if (state === 'normal') return 'accent';
   return 'off';
+}
+
+/** Advance one voice step through the cycle, returning its new state. */
+export function cycleStep(payload, instrument, step) {
+  const state = stepState(payload, instrument, step);
+  return setStep(payload, instrument, step, nextState(instrument, state));
 }
 
 /** Turn the flam flag on a voice step on or off, returning the new value.
@@ -79,24 +90,35 @@ export function cycleStep(payload, instrument, step) {
  * Only meaningful on a step that is on, and the machine cannot flam a step
  * that is not playing, so this refuses rather than storing a flag nothing will
  * ever read. */
-export function toggleFlam(payload, instrument, step) {
+export function setFlam(payload, instrument, step, on) {
   if (stepState(payload, instrument, step) === 'off') return false;
   const velocityAt = OFF_VELOCITY + instrument * NBR_STEP + step;
-  payload[velocityAt] ^= FLAM_BIT;
-  return Boolean(payload[velocityAt] & FLAM_BIT);
+  if (on) payload[velocityAt] |= FLAM_BIT;
+  else payload[velocityAt] &= ~FLAM_BIT;
+  return on;
+}
+
+export function flamState(payload, instrument, step) {
+  return Boolean(payload[OFF_VELOCITY + instrument * NBR_STEP + step] & FLAM_BIT);
+}
+
+export function toggleFlam(payload, instrument, step) {
+  return setFlam(payload, instrument, step, !flamState(payload, instrument, step));
 }
 
 /** Total accent is a mask and nothing else - there is no velocity to set. */
-export function cycleAccent(payload, step) {
+export function setAccent(payload, step, state) {
   const offset = OFF_INST + 2 * TOTAL_ACC;
   const mask = readMask(payload, offset);
-  const on = (mask >> step) & 1;
-  writeMask(payload, offset, on ? mask & ~bit(step) : mask | bit(step));
+  writeMask(payload, offset, state === 'off' ? mask & ~bit(step) : mask | bit(step));
   // The record carries a flag saying whether the lane is used at all; keeping
   // it in step with the mask is what makes the lane appear and disappear.
-  const next = readMask(payload, offset);
-  payload[OFF_SETUP + 7] = next ? 1 : 0;
-  return on ? 'off' : 'accent';
+  payload[OFF_SETUP + 7] = readMask(payload, offset) ? 1 : 0;
+  return state === 'off' ? 'off' : 'accent';
+}
+
+export function cycleAccent(payload, step) {
+  return setAccent(payload, step, accentState(payload, step) === 'off' ? 'accent' : 'off');
 }
 
 export function accentState(payload, step) {
@@ -115,23 +137,25 @@ export function extState(payload, track, step) {
  * accent clears its bit. Getting that backwards would decode as the opposite
  * of what was clicked, which is why extState reads it back rather than
  * assuming. */
-export function cycleExtStep(payload, track, step) {
+export function setExtStep(payload, track, step, state) {
   const maskAt = OFF_EXT_TRACK + 2 * track;
   const accentAt = OFF_EXT_ACCENT + 2 * track;
   const mask = readMask(payload, maskAt);
   const stored = readMask(payload, accentAt);
-  const state = extState(payload, track, step);
 
   if (state === 'off') {
-    writeMask(payload, maskAt, mask | bit(step));
-    writeMask(payload, accentAt, stored | bit(step));   // stored 1 = not accented
-    return 'normal';
+    writeMask(payload, maskAt, mask & ~bit(step));
+    writeMask(payload, accentAt, stored | bit(step));
+    return 'off';
   }
-  if (state === 'normal') {
-    writeMask(payload, accentAt, stored & ~bit(step));  // stored 0 = accented
-    return 'accent';
-  }
-  writeMask(payload, maskAt, mask & ~bit(step));
-  writeMask(payload, accentAt, stored | bit(step));
-  return 'off';
+  writeMask(payload, maskAt, mask | bit(step));
+  // stored 1 means not accented, stored 0 means accented.
+  writeMask(payload, accentAt, state === 'accent' ? stored & ~bit(step) : stored | bit(step));
+  return state;
+}
+
+export function cycleExtStep(payload, track, step) {
+  const state = extState(payload, track, step);
+  const next = state === 'off' ? 'normal' : state === 'normal' ? 'accent' : 'off';
+  return setExtStep(payload, track, step, next);
 }

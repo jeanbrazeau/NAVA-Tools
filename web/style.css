@@ -363,7 +363,7 @@ pre.paper {
 pre.log { min-height: 6rem; max-height: 14rem; white-space: pre-wrap; }
 pre.log .bad { font-weight: 700; }
 pre.log .bad::before { content: "! "; }
-#legend { margin: 8px 0 0; }
+#legend { margin: 8px 0 0; white-space: pre-line; }
 
 /* ---------- the step chart ----------
  *
@@ -484,6 +484,9 @@ td.cell.past {
 td.cell.editable { cursor: pointer; }
 td.cell.editable:hover { box-shadow: inset 0 0 0 2px var(--ink); }
 td.cell.editable.loud:hover { box-shadow: inset 0 0 0 2px var(--paper); }
+/* Mid-drag the pointer is laying down steps, so the browser must not decide it
+   is selecting text across the grid instead. */
+.chart.painting { user-select: none; }
 
 .chart-readouts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
 .readout {
