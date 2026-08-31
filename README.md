@@ -189,6 +189,14 @@ between items, which is where a control would reattach; nothing sets it. A flash
 is paced by scheduled MIDI timestamps rather than by a timer, so switching tabs
 mid-flash does not stall it.
 
+Between 761 and 850 the readouts are told where to break rather than left to
+wrap where they run out. That band is the narrowest the Detail column gets —
+two columns still, with the file list taking its 15rem — and left to itself the
+row strands LAST STEP alone on a second line. The break goes after SHUFFLE
+instead, so it reads as two deliberate rows: SHUFFLE, then FLAM with SCALE and
+LAST STEP still together beside it. Below 760 there is no band, because the
+panel goes to one column and Detail takes the whole width.
+
 The status bar is pinned to the bottom of the window and carries the connection
 state in its left corner — whether the ports are open is not something to scroll
 looking for, and it was competing with the panel tabs up in the header.

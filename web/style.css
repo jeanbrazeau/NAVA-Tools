@@ -727,6 +727,8 @@ td.cell.editable.loud:hover { box-shadow: inset 0 0 0 2px var(--paper); }
    the slack still splits evenly, but two of the three land in the same gap and
    SCALE sits off to one side. */
 .readout-mid, .readout-last { margin-left: auto; }
+/* Off everywhere but the band below - see the media query at the foot. */
+.readout-break { display: none; }
 /* SCALE brings its own bordered strip, so the readout box around it would be a
    second rule enclosing the first. The label keeps its left padding pulled off
    so the row still starts on the same line as the boxes either side. */
@@ -944,6 +946,29 @@ dialog::backdrop {
   #shell {
     width: fit-content;
     max-width: 100%;
+  }
+}
+
+/* The band where the Detail column is at its narrowest: two columns still, but
+   with the file list taking its 15rem out of the width, so the readouts no
+   longer fit on one line. Left to itself the row wraps wherever it runs out and
+   strands LAST STEP alone on the second line. Told where to break instead, it
+   reads as two deliberate rows - SHUFFLE, then FLAM with SCALE and LAST STEP
+   still together beside it.
+
+   Below 760 there is no band: the panel goes to one column, Detail takes the
+   whole width, and the row fits again.
+
+   A zero-height item claiming the whole line is how flexbox is asked for a
+   break. It lands on a line of its own, so the negative margin takes back the
+   row gap that line would otherwise add - without it the two rows sit 6px
+   further apart here than anywhere else. */
+@media (min-width: 761px) and (max-width: 850px) {
+  .readout-break {
+    display: block;
+    flex-basis: 100%;
+    height: 0;
+    margin-bottom: -6px;
   }
 }
 

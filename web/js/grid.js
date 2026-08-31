@@ -876,6 +876,9 @@ function readouts(pattern, editable = false) {
     box.appendChild(el('span', 'readout-label', label));
     box.appendChild(typeof value === 'string' ? el('span', 'readout-value', value) : value);
     wrap.appendChild(box);
+    // Where the row is told to break rather than left to wrap where it likes.
+    // Inert at every width but the one band that needs it - see .readout-break.
+    if (label === 'SHUFFLE') wrap.appendChild(el('span', 'readout-break'));
   }
   return wrap;
 }
