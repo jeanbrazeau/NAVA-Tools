@@ -680,6 +680,37 @@ td.cell.editable.loud:hover { box-shadow: inset 0 0 0 2px var(--paper); }
 }
 .readout-label { letter-spacing: 0.08em; opacity: 0.75; }
 .readout-value { font-size: 13px; }
+/* LAST STEP hard right, on the corner under the end of the grid: it is the
+   readout for the playhead, and the playhead lives at the right-hand end of
+   the same rectangle. Pushed rather than positioned, so the boxes before it
+   still wrap normally on a narrow window. */
+.readout-last { margin-left: auto; }
+
+/* SHUFFLE and FLAM as the eight-position dials they are on the panel. Round
+   here against a rulebook that rounds nothing, because these are the one thing
+   on this page that is not GEM furniture: they are the machine's own indicator
+   lamps, and a lamp is a circle. Filled is the position the dial is on. */
+/* align-self, because .readout aligns its children on the baseline and a row
+   of circles has no text in it to have one. */
+.dial { display: flex; gap: 3px; align-items: center; align-self: center; }
+.lamp {
+  appearance: none;   /* a <button> otherwise arrives with the UA's own face on it */
+  width: 8px;
+  height: 8px;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--ink);
+  border-radius: 50%;
+  background: var(--paper);
+}
+.lamp.on { background: var(--ink); }
+button.lamp { cursor: pointer; }
+/* Half-filled on hover, so the pointer previews which detent it would land on
+   without being mistaken for the one already lit. */
+button.lamp:hover:not(.on) { background: var(--face); }
+button.lamp:focus-visible { outline: 1px solid var(--ink); outline-offset: 2px; }
+/* Only ever seen on a record the machine never wrote - see dial() in grid.js. */
+.dial-odd { margin-left: 4px; font-size: 11px; }
 
 /* A GEM progress bar: solid ink filling a white trough, no animation. */
 progress {

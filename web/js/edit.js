@@ -188,3 +188,26 @@ export function setLength(payload, steps) {
   payload[OFF_SETUP] = clamped - 1;
   return clamped;
 }
+
+/* SHUFFLE and FLAM are one eight-position rotary each on the panel, stored as
+ * one byte apiece right after length and scale. They are positions, not
+ * quantities: nothing scales them, and the grid never reads them, so setting
+ * one is a single byte and no redraw of the chart.
+ *
+ * setFlamDepth rather than setFlam because setFlam above is the per-step flam
+ * flag - a different thing entirely that happens to share the panel's word. */
+export const NBR_DIAL = 8;
+
+const setDial = (payload, offset, value) => {
+  const clamped = Math.max(0, Math.min(NBR_DIAL - 1, Math.round(value)));
+  payload[offset] = clamped;
+  return clamped;
+};
+
+export function setShuffle(payload, value) {
+  return setDial(payload, OFF_SETUP + 2, value);
+}
+
+export function setFlamDepth(payload, value) {
+  return setDial(payload, OFF_SETUP + 3, value);
+}
