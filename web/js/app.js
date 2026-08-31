@@ -540,11 +540,35 @@ function refreshUndoButtons() {
   $('redo-edit').disabled = !history.canRedo();
 }
 
+/** Update the Contents summaries in place after an edit.
+ *
+ * A summary carries the step count and the voices in use, so an edit makes it
+ * wrong - most visibly a length drag, which changes the very number sitting in
+ * the row. The text nodes are rewritten rather than calling refreshItems(),
+ * because that rebuilds the detail pane as well: it would throw the chart away
+ * and build a new one on every gesture, and fight the length drag, which
+ * redraws itself while the pointer is still down.
+ */
+function refreshItemSummaries() {
+  const file = state.selectedFile;
+  if (!file || file.kind !== library.KIND_BACKUP) return;
+  const rows = $('items').children;
+  file.items.forEach((entry, index) => {
+    const row = rows[index];
+    if (!row) return;
+    const summary = summariseItem(entry);
+    row.title = `${entry.label} — ${summary}`;
+    const sub = row.querySelector('.sub');
+    if (sub) sub.textContent = summary;
+  });
+}
+
 /** One history entry per gesture, not per cell - grid.js already fires
  *  `onEdit` once per drag, with the bytes as they stood before it. */
 function recordEdit(file, item, before) {
   history.push({ file, item, before, after: item.payload.slice() });
   syncEditedFlag(file);
+  refreshItemSummaries();
   refreshUndoButtons();
   announceEditState(file);
 }
