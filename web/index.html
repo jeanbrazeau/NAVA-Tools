@@ -88,9 +88,11 @@
       <label class="field">Image
         <select id="firmware-file"><option value="">— loading the deployed image —</option></select>
       </label>
+      <!-- No Inspect button: picking an image inspects it, which is the only
+           time the answer changes. Flash is the one irreversible thing on the
+           page, so it is the one control drawn as solid ink. -->
       <div class="buttons">
-        <button id="do-inspect" class="btn"><u>I</u>nspect</button>
-        <button id="do-flash" class="btn">Flash</button>
+        <button id="do-flash" class="btn primary">Flash</button>
       </div>
       <p class="muted">
         Unit in bootloader mode first. A partial image leaves a unit that will

@@ -388,6 +388,21 @@ input[type="checkbox"]:checked::before {
 /* The default button carries a second rule around it, which is how GEM said
    "this is what Return does". */
 .btn.default { box-shadow: 0 0 0 1px var(--face), 0 0 0 2px var(--ink); margin: 2px; }
+/* Flash: solid ink and the dialog's own drop shadow, because it is the one
+   button on the page that writes something a unit cannot be talked out of.
+   Inverted like a chosen tab, raised like a window - it should not look like
+   the buttons that only read a file. */
+.btn.primary {
+  background: var(--ink);
+  color: var(--paper);
+  box-shadow: var(--shadow);
+}
+/* Hover and press swap the fill back rather than lightening it: the only two
+   colours here are ink and paper, and the shadow collapsing is what "pressed"
+   looks like when nothing can move. */
+.btn.primary:hover:not(:disabled) { background: var(--paper); color: var(--ink); }
+.btn.primary:active:not(:disabled) { box-shadow: none; transform: translate(1px, 1px); }
+.btn.primary:disabled { box-shadow: none; }
 .btn.small { padding: 1px 9px; }
 /* A glyph-only button (undo/redo): square rather than padded to a word's
    width, and big enough - GEM or not - to stay a comfortable click target. */

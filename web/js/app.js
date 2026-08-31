@@ -82,6 +82,10 @@ function status(text) {
   $('status').textContent = text;
 }
 
+function clearLog(id) {
+  $(id).replaceChildren();
+}
+
 function log(id, text, bad = false) {
   const pre = $(id);
   const line = document.createElement('span');
@@ -100,7 +104,7 @@ function setProgress(id, done, total) {
 function setBusy(busy) {
   state.busy = busy;
   state.stopRequested = false;
-  for (const id of ['do-dump', 'do-restore', 'do-flash', 'do-inspect']) {
+  for (const id of ['do-dump', 'do-restore', 'do-flash']) {
     $(id).disabled = busy;
   }
 }
@@ -304,7 +308,14 @@ function portsReady(needInput, logId) {
 
 /* ---------- files ---------- */
 
-function addFile(name, bytes) {
+/** `dated` is when the image was made, as well as anyone here can know it.
+ *
+ * The .syx carries no build stamp - nothing in the bootloader format has a
+ * place to put one - so this is the best available fact rather than a compile
+ * time read out of the file: the release date from firmware/index.json for the
+ * deployed image, and the file's own modified time for one off a disk. Absent
+ * is a legitimate answer and prints nothing. */
+function addFile(name, bytes, dated = null, datedFrom = null) {
   // A .hex is converted on the way in rather than offered as a third kind of
   // file: what the bootloader accepts is the .syx, and every path downstream
   // takes bytes that are already encoded.
@@ -321,6 +332,10 @@ function addFile(name, bytes) {
     }
   }
   const file = library.load(label, data);
+  if (dated) {
+    file.dated = dated;
+    file.datedFrom = datedFrom;
+  }
   for (const item of file.items) loadedSnapshots.set(item, item.payload.slice());
   state.files = [file, ...state.files.filter((f) => f.name !== label)];
   refreshFiles();
@@ -355,11 +370,15 @@ function refreshFiles() {
 
   fillSelect($('restore-file'), state.files.filter((f) => f.kind === library.KIND_BACKUP),
     '— load a .syx under Browse —');
+  // Names only for the image picker: picking one prints its size, pages and
+  // date into the log underneath, so repeating them in the option is the same
+  // sentence twice and a very wide select. The backup picker keeps its summary
+  // - there is nothing under it that says what is in the file.
   fillSelect($('firmware-file'), state.files.filter((f) => f.kind === library.KIND_FIRMWARE),
-    '— drop a .syx on Browse —');
+    '— drop a .syx on Browse —', false);
 }
 
-function fillSelect(element, files, placeholder) {
+function fillSelect(element, files, placeholder, withSummary = true) {
   const previous = element.value;
   element.replaceChildren();
   const blank = document.createElement('option');
@@ -369,7 +388,7 @@ function fillSelect(element, files, placeholder) {
   for (const file of files) {
     const option = document.createElement('option');
     option.value = file.name;
-    option.textContent = `${file.name} — ${file.summary()}`;
+    option.textContent = withSummary ? `${file.name} — ${file.summary()}` : file.name;
     element.appendChild(option);
   }
   element.value = files.some((f) => f.name === previous) ? previous : (files[0]?.name ?? '');
@@ -636,6 +655,9 @@ function describeFile(file) {
   if (file.kind === library.KIND_FIRMWARE) {
     lines.push('', `${file.flashBytes} bytes of flash in ${file.pages} pages`);
     lines.push(`about ${Math.ceil((file.pages * DEFAULT_FLASH_DELAY_MS) / 1000)}s to send`);
+    // See addFile: the image carries no build stamp, so the line names which
+    // date this is rather than calling it a build time it cannot vouch for.
+    if (file.dated) lines.push(`${file.datedFrom ?? 'dated'} ${file.dated}`);
   }
   if (file.errors.length) {
     lines.push('', ...file.errors.map((e) => `bad: ${e}`));
@@ -813,16 +835,23 @@ for (const type of ['dragleave', 'drop']) {
 dropzone.addEventListener('drop', async (event) => {
   event.preventDefault();
   for (const file of event.dataTransfer.files) {
-    addFile(file.name, new Uint8Array(await file.arrayBuffer()));
+    addFile(file.name, new Uint8Array(await file.arrayBuffer()), fileDate(file), 'file dated');
   }
 });
 $('pick-files').addEventListener('click', () => $('file-input').click());
 $('file-input').addEventListener('change', async (event) => {
   for (const file of event.target.files) {
-    addFile(file.name, new Uint8Array(await file.arrayBuffer()));
+    addFile(file.name, new Uint8Array(await file.arrayBuffer()), fileDate(file), 'file dated');
   }
   event.target.value = '';
 });
+
+/** A dropped file's own modified time, as a plain date. Browsers report 0 for a
+ *  file with no timestamp, which is 1970 and worse than saying nothing. */
+function fileDate(file) {
+  if (!file.lastModified) return null;
+  return new Date(file.lastModified).toISOString().slice(0, 10);
+}
 
 /* ---------- transfer ---------- */
 
@@ -944,12 +973,14 @@ async function loadDeployedFirmware() {
 
 /** The copy deployed beside this page: same origin, no CORS. */
 async function useBundled(manifest, repo) {
-  log('firmware-log', `${manifest.tag}  ${manifest.published}  ${manifest.file} (deployed with this page)`);
   const bytes = await releases.downloadBundled(manifest, (done, total) => {
     setProgress('firmware-progress', done, total);
     status(`${done}/${total} bytes`);
   });
-  offer(manifest.file, bytes);
+  // offer() clears the log and writes the image's own details, so the release
+  // it came from is logged after rather than before - it would be wiped.
+  offer(manifest.file, bytes, manifest.published, `${manifest.tag} released`);
+  log('firmware-log', `deployed with this page from ${repo}`);
 
   // The deployed copy is as new as the last time this site was built, and
   // someone about to flash should know if the firmware has moved on since.
@@ -969,24 +1000,39 @@ async function useBundled(manifest, repo) {
   }
 }
 
-function offer(name, bytes) {
-  const file = addFile(name, bytes);
+function offer(name, bytes, dated = null, datedFrom = null) {
+  const file = addFile(name, bytes, dated, datedFrom);
   if (!file || file.kind !== library.KIND_FIRMWARE) {
     log('firmware-log', `${name} is not a bootloader image — refusing to offer it`, true);
     return;
   }
+  // Setting .value in script does not fire `change`, so the readout below is
+  // asked for directly rather than left to the listener.
   $('firmware-file').value = name;
-  log('firmware-log', `${name} ready: ${file.summary()}`);
+  showImageDetails();
 }
 
-$('do-inspect').addEventListener('click', () => {
+/** What the picked image is, in the log under it.
+ *
+ * This replaced an Inspect button. Inspecting was never a question anyone
+ * answered no to - the numbers are the same every time for a given file, and
+ * the only moment they change is the moment a different file is picked. So
+ * picking one prints them, and the log holds the current selection and nothing
+ * else: it is cleared first, so what is on screen always describes the image
+ * the Flash button would send rather than a pile of everything looked at
+ * since.
+ */
+function showImageDetails() {
+  clearLog('firmware-log');
   const file = fileByName($('firmware-file').value);
   if (!file) {
-    log('firmware-log', 'no image selected', true);
+    log('firmware-log', 'no image selected');
     return;
   }
   for (const line of describeFile(file).split('\n')) log('firmware-log', line);
-});
+}
+
+$('firmware-file').addEventListener('change', showImageDetails);
 
 $('do-flash').addEventListener('click', async () => {
   if (!portsReady(false, 'firmware-log')) return;
