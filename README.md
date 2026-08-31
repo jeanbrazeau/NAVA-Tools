@@ -23,11 +23,30 @@ decoding a backup works either way.
 
 ## The web app
 
-Four panels, in the order the work usually happens.
+Two panels: everything that talks to a unit, and everything that reads a file.
 
-**Device** picks the MIDI in and out ports. They are remembered by name in the
-browser, not by index — an index moves whenever a USB device is added or
-removed, and a remembered index would silently point at a different device.
+**Device** is the whole conversation with the machine — the MIDI in and out
+ports, flashing, and dumping and restoring over SysEx. The ports are remembered
+by name in the browser, not by index: an index moves whenever a USB device is
+added or removed, and a remembered index would silently point at a different
+device. Each box carries the state the unit has to be in for what that box does
+— bootloader mode beside the Flash controls, the SysEx config page beside Dump.
+
+**What moves** is picked off a grid rather than described in a range
+expression: banks A–H down the side, the sixteen slots across the top, and the
+tracks as a last row of the same columns — track 7 sits under slot 7. A cell is
+where its label says it is, and what is selected is visible without parsing
+anything. Everything starts selected, a bank letter or a slot number toggles its
+whole row or column, and Select all / Select none do the rest. `selection.js` is
+still there and still tested — it is the browser half of the CLI's
+`--patterns A1-A4` parsing, and only this panel stopped needing it.
+
+Dump and Restore sit side by side with the same grid, because they ask the same
+question in two directions. Restore's grid shows only what the chosen backup
+actually holds: a slot the file has nothing in is dashed and unclickable rather
+than missing, so the numbering never shifts and A5 is in the same place
+whichever file is loaded. That is what makes a partial restore possible — put
+one bank back without writing over the other seven.
 
 **Browse** takes `.syx` files dropped on it and draws a pattern as the chart
 printed on the machine: the voices down the left in the panel's own order, the
@@ -53,16 +72,20 @@ Loud and soft are compared against each instrument's own two levels, not a globa
 threshold: the 909's table is not uniform, and CH at 80 is soft while BD at 50 is
 loud.
 
+The chart takes the whole width and the top of the panel: sixteen steps across
+eleven voices is the widest thing in the app, and every pixel spent on a file
+list beside it is a pixel off the grid. The file list and the setup record are
+things you consult rather than work in, so they share the line underneath.
+
 **Config / setup** is its own window showing tempo, sync, channels, velocities
 and the ext note map. It shows itself rather than waiting to be picked: there
 is exactly one config record per backup and it is what the patterns are played
 through, so there is nothing to choose between and no reason for reading it to
 cost the chart its place on screen — which is what it used to do, as a row
 under the file list that swapped the Detail pane over. A file carrying no
-config record gets no window at all rather than an empty one. Wide, it sits
-under Files in the narrow column, beside the chart; stacked, it goes to the
-bottom under the pattern editor, because on one column the editor is what you
-came for and a wall of setup text above it is a wall to scroll past.
+config record gets no window at all rather than an empty one. Stacked, it goes
+to the bottom under the pattern editor, because on one column the editor is what
+you came for and a wall of setup text above it is a wall to scroll past.
 Track records are not viewable here — they are read, restored and saved like
 everything else, but `nava show FILE.syx "track 3"` is what prints one.
 
@@ -146,44 +169,59 @@ arrows implies, so an undo can land on a pattern that is not on screen. It
 selects that pattern before redrawing: an undo you cannot see is
 indistinguishable from one that did nothing.
 
+**Double-click a file's name** to rename it, in place in the list rather than
+through a dialog: the name is already on screen and the row is already the
+right shape to type in. Enter or clicking away keeps it, Escape puts it back,
+and the extension is not yours to delete: it is stripped off whatever you type
+and put back, because `.syx` is what makes the file mean anything to the next
+thing that opens it. The name is the key everything downstream looks the file up
+by, so two files cannot share one and an empty name is refused; either way the
+old name stays and the status line says why.
+
+It listens for the second click rather than for a double click, and reads which
+row it started on from the mousedown before it. Both are for the same reason:
+the first click selects the file, which rebuilds the chart above the list, and
+the list moves under a pointer that has not. A `dblclick` event is never fired
+at all when that happens, and the row under the pointer by then belongs to a
+different file.
+
 Nothing is written to the file it came from. "Edited" means the bytes differ
 from how the file was loaded, compared byte for byte rather than remembering
 that a click happened — so undoing back to the start clears the marker, and
 saving moves the baseline. Save… writes the file out, and the tab asks before
 closing on top of unsaved work.
 
-**Transfer** dumps and restores. A dump asks where to save before it starts —
-a full backup takes minutes, and the browser will not open a file dialog that
-late.
+A dump asks where to save before it starts — a full backup takes minutes, and
+the browser will not open a file dialog that late.
 
-**Firmware** gets a published build and sends it. The tag box takes `latest`, a
-tag such as `0.91b`, or the release title as the page shows it (`Nava 0.91b`) —
-that is what gets copied, so it is matched against the release titles when no
-tag matches. Add `?repo=owner/name` to the URL to point it at a fork; that is
-the browser's `NAVA_REPO`, and a link carries it.
+**Flashing lives on Device too**, with the ports it flashes through, rather
+than in a tab of its own. There is nothing to choose beforehand: the firmware
+repository's release workflow pushes each published `.syx` into `web/firmware/`
+with an `index.json` naming it, so the image is in the checkout itself — served
+the same by GitHub Pages and by a local server — and the page loads it on
+startup. The Image picker is already filled by the time you get there, and the
+whole Firmware tab that existed to fetch one is gone.
 
-Getting the image works two ways, and the reason is worth stating because it
-looks like a bug otherwise. **A browser cannot read a GitHub release asset.**
-`api.github.com` answers with `access-control-allow-origin: *`, so looking a
-release up works; the asset itself — the redirect from `github.com` and the
+That the image is committed rather than fetched is worth stating, because it
+looks like a workaround until you hit the reason. **A browser cannot read a
+GitHub release asset.** `api.github.com` answers with
+`access-control-allow-origin: *`, so looking a release up works; the asset
+itself — the redirect from `github.com` and the
 `release-assets.githubusercontent.com` response behind it — sends no such
 header, so `fetch` on it fails in every browser. There is no header to ask for
 and no endpoint that behaves differently, and a CORS proxy is the wrong answer
-for a page that flashes firmware. So:
+for a page that flashes firmware. Committing the image sidesteps it entirely.
+(The Pages workflow still downloads one at deploy time as a fallback if nothing
+is committed.)
 
-- **`latest` uses the copy committed beside the page.** The firmware
-  repository's release workflow pushes each published `.syx` into
-  `web/firmware/` with an `index.json` naming it, so the image is in the
-  checkout itself — served the same by GitHub Pages and by a local server.
-  (The Pages workflow still downloads one at deploy time as a fallback if
-  nothing is committed.) One click, same origin, no third party in the path at
-  all. If a newer release has been published since, the log says so and names
-  the tag.
-- **Any other tag hands off to the browser's own downloader** and asks for the
-  file back by drag and drop. Two steps instead of one, which is the price of
-  the paragraph above.
+If a newer release has been published since the page was built, the log says so
+and names the tag. Getting that one, or an older tag, or a fork's, means
+downloading it from the releases page and dropping it on Browse — the same way
+every other file reaches this app. Add `?repo=owner/name` to the URL to point
+the version check at a fork; that is the browser's `NAVA_REPO`, and a link
+carries it.
 
-Transfer and Firmware both name what they are about to overwrite and ask first —
+Restore and flashing both name what they are about to overwrite and ask first —
 neither is reversible, and the unit gives no confirmation of its own. A firmware
 image and a backup are told apart by their SysEx header, so the page refuses to
 flash a backup or restore a firmware image.
@@ -318,9 +356,10 @@ nava build                                     # .pio/build/nava_sysex/firmware.
 nava flash .pio/build/nava_sysex/firmware.syx --out NAVA-909
 ```
 
-Put the unit in bootloader mode first: **hold steps 1, 3 and 5 while powering it
-on**. The panel does not react afterwards — it is no longer running the firmware
-— and the unit restarts on its own when the transfer finishes.
+Put the unit in bootloader mode first: **hold steps 1, 3 and 5 while powering on
+the NAVA**. The device reboots into the main operating system if no firmware has
+begun transferring after 30 seconds, so start the flash rather than leaving it
+sitting there.
 
 The 250 ms default between pages is not politeness. The bootloader commits a
 flash page per message and does not buffer a second one while erasing, so

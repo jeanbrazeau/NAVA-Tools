@@ -1,5 +1,5 @@
-/* The page. Four panels in the order the work usually happens: pick a port,
- * look at what you have, move data, flash firmware.
+/* The page. Three panels in the order the work usually happens: pick the ports
+ * and flash if you are flashing, move the data, then look at what came back.
  *
  * Everything a MIDI operation touches is async, so "busy" is a single flag
  * rather than a worker thread: the transfer loops await and the UI keeps
@@ -20,13 +20,16 @@ import * as library from './library.js';
 import * as midi from './midi.js';
 import * as releases from './releases.js';
 import * as render from './render.js';
-import * as selection from './selection.js';
 import * as store from './store.js';
 import * as transfer from './transfer.js';
 
 const DEFAULT_TIMEOUT = 3000;
 const DEFAULT_RETRIES = 2;
 const DEFAULT_FLASH_DELAY_MS = 250;
+
+// The image list's last entry, which opens a file picker rather than naming a
+// file. Only .syx names reach that list, so this cannot be one of them.
+const FIRMWARE_OTHER = '__other__';
 
 const SYSEX_PAGE_HINT =
   'Stop the sequencer and press SHIFT+TEMPO to the SysEx page ("type / select") first.';
@@ -82,6 +85,10 @@ function status(text) {
   $('status').textContent = text;
 }
 
+function clearLog(id) {
+  $(id).replaceChildren();
+}
+
 function log(id, text, bad = false) {
   const pre = $(id);
   const line = document.createElement('span');
@@ -100,7 +107,7 @@ function setProgress(id, done, total) {
 function setBusy(busy) {
   state.busy = busy;
   state.stopRequested = false;
-  for (const id of ['do-dump', 'do-restore', 'do-download', 'do-flash', 'do-inspect']) {
+  for (const id of ['do-dump', 'do-restore', 'do-flash']) {
     $(id).disabled = busy;
   }
 }
@@ -167,6 +174,20 @@ async function writeFile(target, bytes) {
 
 function today() {
   return new Date().toISOString().slice(0, 10);
+}
+
+/** What the Save as box starts on: the date first, so a folder of these sorts
+ *  into the order they were taken. */
+const defaultDumpName = () => `${today()} NAVA Backup`;
+
+/** The name the save dialog opens on. `.syx` is appended rather than shown in
+ *  the box: it is not a choice, and an extension in an editable field is
+ *  something to accidentally delete. A box emptied entirely falls back to the
+ *  default rather than saving a file called nothing. */
+function dumpFileName() {
+  const typed = $('dump-name').value.trim();
+  const base = (typed || defaultDumpName()).replace(/\.syx$/i, '');
+  return `${base}.syx`;
 }
 
 /* ---------- tabs ---------- */
@@ -304,7 +325,14 @@ function portsReady(needInput, logId) {
 
 /* ---------- files ---------- */
 
-function addFile(name, bytes) {
+/** `dated` is when the image was made, as well as anyone here can know it.
+ *
+ * The .syx carries no build stamp - nothing in the bootloader format has a
+ * place to put one - so this is the best available fact rather than a compile
+ * time read out of the file: the release date from firmware/index.json for the
+ * deployed image, and the file's own modified time for one off a disk. Absent
+ * is a legitimate answer and prints nothing. */
+function addFile(name, bytes, dated = null) {
   // A .hex is converted on the way in rather than offered as a third kind of
   // file: what the bootloader accepts is the .syx, and every path downstream
   // takes bytes that are already encoded.
@@ -321,11 +349,117 @@ function addFile(name, bytes) {
     }
   }
   const file = library.load(label, data);
+  if (dated) {
+    file.dated = dated;
+  }
   for (const item of file.items) loadedSnapshots.set(item, item.payload.slice());
   state.files = [file, ...state.files.filter((f) => f.name !== label)];
   refreshFiles();
   selectFile(file);
   return file;
+}
+
+/* The second click of a double click, rather than a dblclick event - because
+ * there is no dblclick event to listen for.
+ *
+ * The first click selects the file, and selecting rebuilds the list, so the
+ * element under the pointer is not the same one the first click landed on.
+ * Chrome does not fire dblclick when that happens: instrumented, a double
+ * click on a row produces two clicks with detail 1 and 2 and nothing else at
+ * all. A dblclick handler on the row, on the list, or on the document would
+ * each have waited forever. `detail` is the click count the browser is already
+ * keeping, and it survives the row being replaced underneath it.
+ *
+ * Bound to the list rather than the rows for the same reason: the row this
+ * started on is gone by now. The one under the pointer is the one meant. */
+let renameTarget = null;
+
+/* Which row the gesture started on, taken before anything moves.
+ *
+ * The first click selects the file, and that rebuilds Detail above this list -
+ * a different file is a different chart, a different height, and the list
+ * slides up or down under a pointer that has not moved. Asking what is under
+ * the pointer on the second click therefore answers with a different row than
+ * the one that was double-clicked, and renames the wrong file. mousedown runs
+ * before any of that. */
+$('files').addEventListener('mousedown', (event) => {
+  if (event.detail !== 1) return;
+  renameTarget = event.target.closest?.('li[data-name]')?.dataset.name ?? null;
+}, true);
+
+$('files').addEventListener('click', (event) => {
+  if (event.detail < 2 || !renameTarget) return;
+  const file = fileByName(renameTarget);
+  // By name, not by position: the row element is a new one after the rebuild.
+  const row = [...$('files').children].find((li) => li.dataset.name === renameTarget);
+  if (file && row) renameInPlace(row, file);
+});
+
+/** Rename a file by double-clicking its row.
+ *
+ * In place rather than through a dialog: the name is already on screen and the
+ * row is already the right shape to type in. Enter or clicking away keeps it,
+ * Escape puts it back.
+ *
+ * The name is the key everything downstream looks the file up by - the Restore
+ * and Image pickers, Save…, and addFile's own replace-by-name - so two files
+ * cannot share one, and an empty name is not a name. Either is refused and the
+ * old one stays, said in the status line rather than in a dialog, because a
+ * rejected rename is not worth a modal.
+ *
+ * A name typed without an extension keeps the one it had. `.syx` is what makes
+ * the file mean anything to the next thing that opens it, and losing it to a
+ * rename is not something anyone intends. */
+function renameInPlace(row, file) {
+  if (row.querySelector('input')) return;
+  const box = document.createElement('input');
+  box.className = 'rename';
+  box.value = file.name;
+  box.spellcheck = false;
+  row.replaceChildren(box);
+  box.focus();
+  // The extension is selected out of the way rather than included: the stem is
+  // what a rename is usually about.
+  const dot = file.name.lastIndexOf('.');
+  box.setSelectionRange(0, dot > 0 ? dot : file.name.length);
+
+  let done = false;
+  const finish = (keep) => {
+    if (done) return;
+    done = true;
+    if (keep) commitRename(file, box.value);
+    refreshFiles();
+    refreshBrowse();
+  };
+  box.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter') finish(true);
+    else if (event.key === 'Escape') finish(false);
+    else return;
+    event.preventDefault();
+  });
+  box.addEventListener('blur', () => finish(true));
+  // The row's own click selects the file; a click inside the box is not that.
+  box.addEventListener('click', (event) => event.stopPropagation());
+  box.addEventListener('dblclick', (event) => event.stopPropagation());
+}
+
+/** The extension is not the user's to delete: it is stripped off whatever was
+ *  typed and put back. `.syx` is what makes the file mean anything to the next
+ *  thing that opens it - a restore, another copy of this page, the CLI - and a
+ *  rename is about the name, not about what kind of file it is. */
+function commitRename(file, typed) {
+  const dot = file.name.lastIndexOf('.');
+  const extension = dot > 0 ? file.name.slice(dot) : '';
+  const stem = typed.trim().replace(new RegExp(`${extension}$`, 'i'), '').trim();
+  if (!stem) return;
+  const named = stem + extension;
+  if (named === file.name) return;
+  if (state.files.some((f) => f !== file && f.name === named)) {
+    status(`${named} is already loaded — not renamed`);
+    return;
+  }
+  file.name = named;
+  status(`renamed to ${named}`);
 }
 
 function refreshFiles() {
@@ -349,27 +483,51 @@ function refreshFiles() {
     // which a colour would not.
     name.textContent = file.edited ? `\u2022 ${file.name}` : file.name;
     item.append(name);
+    // Which row this is, for the rename delegated to the list below.
+    item.dataset.name = file.name;
     item.addEventListener('click', () => selectFile(file));
     list.appendChild(item);
   }
 
   fillSelect($('restore-file'), state.files.filter((f) => f.kind === library.KIND_BACKUP),
     '— load a .syx under Browse —');
-  fillSelect($('firmware-file'), state.files.filter((f) => f.kind === library.KIND_FIRMWARE),
-    '— download one, or drop a .syx —');
+  // Filling the list can change which file is selected - a dropped backup
+  // becomes the chosen one - and the grid under it has to follow, since
+  // fillSelect assigns .value in script and that fires no change event.
+  syncRestoreMatrix();
+  // Names only for the image picker: picking one prints its size, pages and
+  // date into the log underneath, so repeating them in the option is the same
+  // sentence twice and a very wide select. The backup picker keeps its summary
+  // - there is nothing under it that says what is in the file.
+  const images = $('firmware-file');
+  fillSelect(images, state.files.filter((f) => f.kind === library.KIND_FIRMWARE), null, false);
+  // Last in the list, because it is not an image: it is the way to reach one
+  // that was never published - a local build, a test image - without going to
+  // Browse and coming back.
+  const other = document.createElement('option');
+  other.value = FIRMWARE_OTHER;
+  other.textContent = 'Other…';
+  images.appendChild(other);
+  // fillSelect leaves an empty value when there are no images at all, which
+  // would render the select blank. Other… is then the only thing it can say.
+  if (!images.value) images.value = FIRMWARE_OTHER;
 }
 
-function fillSelect(element, files, placeholder) {
+/** `placeholder` null leaves the list with no blank entry at all - for the
+ *  image picker, which has an Other… of its own to offer instead. */
+function fillSelect(element, files, placeholder, withSummary = true) {
   const previous = element.value;
   element.replaceChildren();
-  const blank = document.createElement('option');
-  blank.value = '';
-  blank.textContent = placeholder;
-  element.appendChild(blank);
+  if (placeholder !== null) {
+    const blank = document.createElement('option');
+    blank.value = '';
+    blank.textContent = placeholder;
+    element.appendChild(blank);
+  }
   for (const file of files) {
     const option = document.createElement('option');
     option.value = file.name;
-    option.textContent = `${file.name} — ${file.summary()}`;
+    option.textContent = withSummary ? `${file.name} — ${file.summary()}` : file.name;
     element.appendChild(option);
   }
   element.value = files.some((f) => f.name === previous) ? previous : (files[0]?.name ?? '');
@@ -631,12 +789,24 @@ function showChart(file, item) {
   $('legend').textContent = grid.chartLegend(true);
 }
 
+/** An image, in the order you want to know it: what it is, when it was made,
+ *  how big, how long to send. Null for anything that is not firmware.
+ *
+ *  Its own shape rather than the generic two-line header plus extras, which
+ *  said the size twice - once as "N bytes - firmware, M bytes, P pages" and
+ *  again as "M bytes of flash in P pages" - for a reader who only ever wanted
+ *  it once. */
+function firmwareLines(file) {
+  if (file.kind !== library.KIND_FIRMWARE) return null;
+  const lines = [file.name];
+  if (file.dated) lines.push(`compilation date ${file.dated}`);
+  lines.push(`${file.size} bytes: ${file.flashBytes} bytes, ${file.pages} pages`);
+  lines.push(`about ${Math.ceil((file.pages * DEFAULT_FLASH_DELAY_MS) / 1000)}s to send`);
+  return lines;
+}
+
 function describeFile(file) {
-  const lines = [`${file.name}`, `${file.size} bytes — ${file.summary()}`];
-  if (file.kind === library.KIND_FIRMWARE) {
-    lines.push('', `${file.flashBytes} bytes of flash in ${file.pages} pages`);
-    lines.push(`about ${Math.ceil((file.pages * DEFAULT_FLASH_DELAY_MS) / 1000)}s to send`);
-  }
+  const lines = firmwareLines(file) ?? [`${file.name}`, `${file.size} bytes — ${file.summary()}`];
   if (file.errors.length) {
     lines.push('', ...file.errors.map((e) => `bad: ${e}`));
   }
@@ -813,152 +983,352 @@ for (const type of ['dragleave', 'drop']) {
 dropzone.addEventListener('drop', async (event) => {
   event.preventDefault();
   for (const file of event.dataTransfer.files) {
-    addFile(file.name, new Uint8Array(await file.arrayBuffer()));
+    addFile(file.name, new Uint8Array(await file.arrayBuffer()), fileDate(file));
   }
 });
 $('pick-files').addEventListener('click', () => $('file-input').click());
 $('file-input').addEventListener('change', async (event) => {
   for (const file of event.target.files) {
-    addFile(file.name, new Uint8Array(await file.arrayBuffer()));
+    addFile(file.name, new Uint8Array(await file.arrayBuffer()), fileDate(file));
   }
   event.target.value = '';
 });
 
+/** A dropped file's own modified time, as a plain date. Browsers report 0 for a
+ *  file with no timestamp, which is 1970 and worse than saying nothing. */
+function fileDate(file) {
+  if (!file.lastModified) return null;
+  return new Date(file.lastModified).toISOString().slice(0, 10);
+}
+
+/* ---------- what to dump ----------
+ *
+ * The same idea as the pattern chart on Browse: a grid you read the answer off
+ * rather than a box you describe it in. Banks across the top, the sixteen
+ * slots down the side, so a cell is where its label says it is - B7 is the
+ * seventh row of the second column - and what is selected is visible without
+ * parsing a range expression back into positions.
+ *
+ * selection.js still exists and is still tested: it is the browser half of the
+ * CLI's range parsing, and `nava dump --patterns A1-A4` needs it. Only this
+ * panel stopped needing it, having no text to parse.
+ */
+
+/** Toggle one cell, or set it. `on` omitted flips it. A disabled cell is one
+ *  the file has nothing in, and stays where it is. */
+function setCell(cell, on = null) {
+  if (cell.disabled) return;
+  const now = on === null ? !cell.classList.contains('on') : on;
+  cell.classList.toggle('on', now);
+  cell.setAttribute('aria-pressed', String(now));
+}
+
+const cellsIn = (id) => [...$(id).querySelectorAll('.matrix-cell')];
+
+/** The numbers a matrix has chosen, ascending - which for the pattern grids is
+ *  bank-then-slot, the order the panel is laid out in. */
+const chosenOf = (cells) => cells
+  .filter((c) => c.classList.contains('on') && !c.disabled)
+  .map((c) => Number(c.dataset.n))
+  .sort((a, b) => a - b);
+
+/** One grid, banks down the side and the sixteen slots across the top, with the
+ *  tracks as a last row of the same columns.
+ *
+ *  Banks vertical because there are eight of them and sixteen slots: the grid
+ *  comes out wider than tall, which is the shape of the panel it sits in. And
+ *  one table rather than two, because tracks are numbered 1-16 as well - they
+ *  line up under the pattern columns exactly, and a second table would only
+ *  have repeated the same sixteen headings underneath.
+ *
+ *  Built rather than written out: 144 cells is not something to keep in an HTML
+ *  file, and the labels come from the same protocol helper the rest of the app
+ *  reads them from. */
+function buildMatrix(id) {
+  const table = document.createElement('table');
+  table.className = 'matrix-grid';
+
+  const head = document.createElement('tr');
+  head.appendChild(document.createElement('th')).className = 'matrix-corner';
+  for (let slot = 0; slot < protocol.PTRN_PER_BANK; slot += 1) {
+    const th = document.createElement('th');
+    th.className = 'matrix-head';
+    th.textContent = String(slot + 1);
+    th.title = `slot ${slot + 1} in every bank — click to select or clear the column`;
+    th.addEventListener('click', () => toggleGroup(columnCells(id, slot)));
+    head.appendChild(th);
+  }
+  head.appendChild(document.createElement('th')).className = 'matrix-gutter';
+  const thead = document.createElement('thead');
+  thead.appendChild(head);
+  table.appendChild(thead);
+
+  const body = document.createElement('tbody');
+  for (let bank = 0; bank < protocol.MAX_BANK; bank += 1) {
+    const row = document.createElement('tr');
+    const label = document.createElement('th');
+    label.className = 'matrix-head matrix-row-head';
+    label.textContent = bankLetter(bank);
+    label.title = `bank ${bankLetter(bank)} — click to select or clear the row`;
+    // A whole bank is the unit anyone actually thinks in, and sixteen clicks
+    // to get one is not a control. Same for a slot across every bank.
+    label.addEventListener('click', () => toggleGroup(rowCells(id, bank)));
+    row.appendChild(label);
+    for (let slot = 0; slot < protocol.PTRN_PER_BANK; slot += 1) {
+      const n = bank * protocol.PTRN_PER_BANK + slot;
+      row.appendChild(matrixCell(n, protocol.patternLabel(n), 'pattern'));
+    }
+    row.appendChild(document.createElement('td')).className = 'matrix-gutter';
+    body.appendChild(row);
+  }
+
+  const tracks = document.createElement('tr');
+  tracks.className = 'matrix-tracks';
+  const label = document.createElement('th');
+  label.className = 'matrix-head matrix-row-head';
+  label.textContent = 'TRK';
+  label.title = 'every track — click to select or clear the row';
+  label.addEventListener('click', () => toggleGroup(trackCells(id)));
+  tracks.appendChild(label);
+  for (let track = 0; track < protocol.MAX_TRACK; track += 1) {
+    tracks.appendChild(matrixCell(track, `track ${track + 1}`, 'track'));
+  }
+  tracks.appendChild(document.createElement('td')).className = 'matrix-gutter';
+  body.appendChild(tracks);
+
+  table.appendChild(body);
+  $(id).replaceChildren(table);
+}
+
+function matrixCell(n, title, kind) {
+  const cell = document.createElement('td');
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'matrix-cell on';
+  button.dataset.n = String(n);
+  button.dataset.kind = kind;
+  button.title = title;
+  button.setAttribute('aria-label', title);
+  button.setAttribute('aria-pressed', 'true');
+  button.addEventListener('click', () => setCell(button));
+  cell.appendChild(button);
+  return cell;
+}
+
+// A column is one slot number - the patterns in it, and the track under them,
+// since track 7 sits beneath slot 7 in every bank.
+const columnCells = (id, slot) => cellsIn(id).filter((c) => (c.dataset.kind === 'track'
+  ? Number(c.dataset.n) === slot
+  : Number(c.dataset.n) % protocol.PTRN_PER_BANK === slot));
+const rowCells = (id, bank) => patternCells(id)
+  .filter((c) => Math.floor(Number(c.dataset.n) / protocol.PTRN_PER_BANK) === bank);
+const patternCells = (id) => cellsIn(id).filter((c) => c.dataset.kind === 'pattern');
+const trackCells = (id) => cellsIn(id).filter((c) => c.dataset.kind === 'track');
+
+/** All on unless they already all are, in which case all off - so a header is
+ *  one control rather than two, and pressing it twice returns what was there.
+ *  Cells the file has nothing in do not count either way. */
+function toggleGroup(cells) {
+  const live = cells.filter((c) => !c.disabled);
+  const wanted = !live.every((c) => c.classList.contains('on'));
+  for (const cell of live) setCell(cell, wanted);
+}
+
+function setAll(id, on, checkbox) {
+  for (const cell of cellsIn(id)) setCell(cell, on);
+  $(checkbox).checked = on;
+}
+
+/** Grey out everything the chosen backup does not carry, and select the rest.
+ *
+ * Restore can only send what is in the file, so a cell for a pattern the file
+ * has nothing in is not a choice - it is disabled rather than hidden, the same
+ * way the PATTERN buttons on Browse are, so the numbering never shifts and A5
+ * is in the same place whichever file is loaded. */
+function syncRestoreMatrix() {
+  const file = fileByName($('restore-file').value);
+  const items = file && file.kind === library.KIND_BACKUP ? file.items : [];
+  const has = (cmd) => new Set(items.filter((i) => i.cmd === cmd).map((i) => i.param));
+  const patterns = has(protocol.NAVA_PTRN_DMP);
+  const tracks = has(protocol.NAVA_TRACK_DMP);
+  const config = items.some((i) => i.cmd === protocol.NAVA_CONFIG_DMP);
+
+  for (const cell of cellsIn('restore-matrix')) {
+    {
+      const held = cell.dataset.kind === 'track' ? tracks : patterns;
+      const there = held.has(Number(cell.dataset.n));
+      cell.disabled = !there;
+      cell.classList.toggle('absent', !there);
+      cell.classList.toggle('on', there);
+      cell.setAttribute('aria-pressed', String(there));
+    }
+  }
+  $('restore-config').disabled = !config;
+  $('restore-config').checked = config;
+}
+
+buildMatrix('dump-matrix');
+buildMatrix('restore-matrix');
+$('dump-all').addEventListener('click', () => setAll('dump-matrix', true, 'dump-config'));
+$('dump-none').addEventListener('click', () => setAll('dump-matrix', false, 'dump-config'));
+$('restore-all').addEventListener('click', () => setAll('restore-matrix', true, 'restore-config'));
+$('restore-none').addEventListener('click', () => setAll('restore-matrix', false, 'restore-config'));
+$('restore-file').addEventListener('change', syncRestoreMatrix);
+
 /* ---------- transfer ---------- */
 
 $('do-dump').addEventListener('click', async () => {
-  if (!portsReady(true, 'transfer-log')) return;
+  if (!portsReady(true, 'progress-log')) return;
 
   let items;
   try {
     items = transfer.selections({
-      patterns: $('dump-patterns').value.trim() ? selection.parsePatterns($('dump-patterns').value) : [],
-      tracks: $('dump-tracks').value.trim() ? selection.parseTracks($('dump-tracks').value) : [],
+      patterns: chosenOf(patternCells('dump-matrix')),
+      tracks: chosenOf(trackCells('dump-matrix')),
       config: $('dump-config').checked,
     });
   } catch (error) {
-    log('transfer-log', error.message, true);
+    log('progress-log', error.message, true);
     return;
   }
   if (!items.length) {
-    log('transfer-log', 'nothing selected', true);
+    log('progress-log', 'nothing selected', true);
     return;
   }
 
-  const target = await pickSaveFile(`nava-backup-${today()}.syx`);
+  const target = await pickSaveFile(dumpFileName());
   if (!target) return;
 
   setBusy(true);
-  log('transfer-log', `dumping ${items.length} item(s). ${SYSEX_PAGE_HINT}`);
+  log('progress-log', `dumping ${items.length} item(s). ${SYSEX_PAGE_HINT}`);
   const outcome = await transfer.backup(state.ports, items, DEFAULT_TIMEOUT, DEFAULT_RETRIES, {
     progress: (done, total, label) => {
-      setProgress('transfer-progress', done, total);
+      setProgress('progress-bar', done, total);
       status(`${done}/${total}  ${label}`);
     },
     shouldStop,
   });
 
-  for (const failure of outcome.failures) log('transfer-log', failure, true);
+  for (const failure of outcome.failures) log('progress-log', failure, true);
   if (outcome.collected.length) {
     await writeFile(target, outcome.collected);
     addFile(target.name, outcome.collected);
-    log('transfer-log', `wrote ${target.name} (${outcome.collected.length} bytes)`);
+    log('progress-log', `wrote ${target.name} (${outcome.collected.length} bytes)`);
   } else {
-    log('transfer-log', 'nothing came back; the file was not written', true);
+    log('progress-log', 'nothing came back; the file was not written', true);
   }
   setBusy(false);
 });
 
 $('do-restore').addEventListener('click', async () => {
-  if (!portsReady(true, 'transfer-log')) return;
+  if (!portsReady(true, 'progress-log')) return;
   const file = fileByName($('restore-file').value);
   if (!file) {
-    log('transfer-log', 'no backup selected', true);
+    log('progress-log', 'no backup selected', true);
     return;
   }
   if (file.kind !== library.KIND_BACKUP) {
-    log('transfer-log', `${file.name} is not a backup — refusing to send it`, true);
+    log('progress-log', `${file.name} is not a backup — refusing to send it`, true);
     return;
   }
 
-  const counts = file.summary();
+  // Only what the grid has chosen, so a restore can put one bank back without
+  // writing over the other seven.
+  const patterns = new Set(chosenOf(patternCells('restore-matrix')));
+  const tracks = new Set(chosenOf(trackCells('restore-matrix')));
+  const wanted = file.items.filter((i) => {
+    if (i.cmd === protocol.NAVA_PTRN_DMP) return patterns.has(i.param);
+    if (i.cmd === protocol.NAVA_TRACK_DMP) return tracks.has(i.param);
+    if (i.cmd === protocol.NAVA_CONFIG_DMP) return $('restore-config').checked;
+    return false;
+  });
+  if (!wanted.length) {
+    log('progress-log', 'nothing selected to restore', true);
+    return;
+  }
+
   const ok = await confirmDialog(
     'Overwrite the unit?',
-    `${file.name} holds ${counts}. Restoring writes every one of them over what ` +
-      'is on the unit now. This cannot be undone.',
+    `Restoring ${wanted.length} of the ${file.items.length} record(s) in ${file.name}, ` +
+      'over what is on the unit now. This cannot be undone.',
     'Restore',
   );
   if (!ok) return;
 
-  const dumps = file.items.map((i) => new protocol.NavaMessage(i.cmd, i.param, i.payload));
+  const dumps = wanted.map((i) => new protocol.NavaMessage(i.cmd, i.param, i.payload));
   setBusy(true);
-  log('transfer-log', `restoring ${dumps.length} item(s). ${SYSEX_PAGE_HINT}`);
+  log('progress-log', `restoring ${dumps.length} item(s). ${SYSEX_PAGE_HINT}`);
   const outcome = await transfer.restore(state.ports, dumps, DEFAULT_TIMEOUT, DEFAULT_RETRIES, {
     progress: (done, total, label) => {
-      setProgress('transfer-progress', done, total);
+      setProgress('progress-bar', done, total);
       status(`${done}/${total}  ${label}`);
     },
     shouldStop,
   });
-  for (const failure of outcome.failures) log('transfer-log', failure, true);
-  if (outcome.ok) log('transfer-log', 'restore complete');
+  for (const failure of outcome.failures) log('progress-log', failure, true);
+  if (outcome.ok) log('progress-log', 'restore complete');
   setBusy(false);
 });
 
 /* ---------- firmware ---------- */
 
-$('do-download').addEventListener('click', async () => {
-  const tag = $('release-tag').value.trim() || 'latest';
-  const repo = state.repo;
-  setBusy(true);
+/** Load the image deployed beside this page, on startup, with nothing to press.
+ *
+ * The firmware repository's release workflow commits the current build into
+ * web/firmware/, so by the time anyone opens this there is exactly one image to
+ * flash and no question to ask about it - which is what the "Get an image"
+ * panel used to be for. Same origin, so it is a plain fetch with none of the
+ * CORS trouble a release asset has (see the note at the top of releases.js).
+ *
+ * Quietly, and never fatally: a checkout without the folder, or a deploy that
+ * did not get one, leaves the picker empty and everything else working. The
+ * flash path takes a dropped .syx exactly as it always did, which is also the
+ * way to reach an older tag or a fork now that there is no box to type one in.
+ */
+async function loadDeployedFirmware() {
+  let manifest = null;
   try {
-    const manifest = await releases.bundled();
-    const wantsLatest = tag === 'latest';
-    const usable =
-      manifest &&
-      manifest.repo === repo &&
-      (wantsLatest || matchesTag(manifest, tag));
-
-    if (usable) {
-      await useBundled(manifest, repo, wantsLatest);
-    } else {
-      await handOff(tag, repo, manifest);
-    }
-    state.settings.releaseTag = tag;
-    store.save(state.settings);
-  } catch (error) {
-    log('firmware-log', error.message ?? String(error), true);
+    manifest = await releases.bundled();
+  } catch {
+    // Nothing there, or nothing readable. Handled the same as absent.
   }
-  setBusy(false);
-});
-
-function matchesTag(manifest, tag) {
-  const key = tag.replace(/\s+/g, '').toLowerCase();
-  return [manifest.tag, manifest.name].some(
-    (value) => (value ?? '').replace(/\s+/g, '').toLowerCase() === key,
-  );
+  if (!manifest) {
+    log('progress-log', 'no image deployed with this page — drop a .syx on Browse to flash one');
+    return;
+  }
+  try {
+    await useBundled(manifest, state.repo);
+  } catch (error) {
+    log('progress-log', error.message ?? String(error), true);
+  }
+  // The fetch drives the same bar the flash does, and leaving it full would
+  // have the panel opening on what looks like a finished transfer.
+  setProgress('progress-bar', 0, 1);
+  status('');
 }
 
-/** The copy deployed beside this page: one click, same origin, no CORS. */
-async function useBundled(manifest, repo, wantsLatest) {
-  log('firmware-log', `${manifest.tag}  ${manifest.published}  ${manifest.file} (deployed with this page)`);
+/** The copy deployed beside this page: same origin, no CORS. */
+async function useBundled(manifest, repo) {
   const bytes = await releases.downloadBundled(manifest, (done, total) => {
-    setProgress('firmware-progress', done, total);
+    setProgress('progress-bar', done, total);
     status(`${done}/${total} bytes`);
   });
-  offer(manifest.file, bytes);
+  // offer() clears the log and writes the image's own details, so the release
+  // it came from is logged after rather than before - it would be wiped.
+  offer(manifest.file, bytes, manifest.published);
+  log('progress-log', `${manifest.tag}, deployed with this page from ${repo}`);
 
-  // Only worth a request when the user asked for "latest": the deployed copy is
-  // as new as the last time this site was built, and someone about to flash
-  // should know if the firmware has moved on since.
-  if (!wantsLatest) return;
+  // The deployed copy is as new as the last time this site was built, and
+  // someone about to flash should know if the firmware has moved on since.
+  // Advisory only - there is no longer anywhere to type a tag, and the answer
+  // is to redeploy or to drop the .syx by hand.
   try {
     const newest = await releases.fetchRelease('latest', repo);
     if (newest.tag && newest.tag !== manifest.tag) {
       log(
-        'firmware-log',
+        'progress-log',
         `note: ${newest.tag} has been published since this page was built. ` +
-          `Type ${newest.tag} above to fetch it.`,
+          'Download it from the releases page and drop it on Browse to flash it.',
       );
     }
   } catch {
@@ -966,59 +1336,96 @@ async function useBundled(manifest, repo, wantsLatest) {
   }
 }
 
-/* No deployed copy to use, so the browser downloads it and the file comes back
- * by drag and drop. Two steps rather than one, and the only alternative to a
- * CORS proxy - see the note at the top of releases.js. */
-async function handOff(tag, repo, manifest) {
-  log('firmware-log', `looking up ${tag} in ${repo}…`);
-  const release = await releases.fetchRelease(tag, repo);
-  const asset = release.firmware;
-  if (!asset) throw new releases.ReleaseError(`${release.label} publishes no .syx`);
-  log('firmware-log', `${release.label}  ${release.published}  ${asset.name} (${asset.size} bytes)`);
-
-  if (manifest) {
-    log('firmware-log', `(this page was deployed with ${manifest.tag}, so ${release.tag} has to come from GitHub)`);
-  }
-  releases.handOffToBrowser(asset);
-  log(
-    'firmware-log',
-    `${asset.name} is downloading in the browser — GitHub does not let a page read ` +
-      'a release asset directly. Drop the file on this page when it lands, and it ' +
-      'will appear in the list below.',
-  );
-}
-
-function offer(name, bytes) {
-  const file = addFile(name, bytes);
+function offer(name, bytes, dated = null) {
+  const file = addFile(name, bytes, dated);
   if (!file || file.kind !== library.KIND_FIRMWARE) {
-    log('firmware-log', `${name} is not a bootloader image — refusing to offer it`, true);
+    log('progress-log', `${name} is not a bootloader image — refusing to offer it`, true);
     return;
   }
+  // Setting .value in script does not fire `change`, so the readout below is
+  // asked for directly rather than left to the listener.
   $('firmware-file').value = name;
-  log('firmware-log', `${name} ready: ${file.summary()}`);
+  showImageDetails();
 }
 
-$('do-inspect').addEventListener('click', () => {
+/** What the picked image is, in the panel's log.
+ *
+ * This replaced an Inspect button. Inspecting was never a question anyone
+ * answered no to - the numbers are the same every time for a given file, and
+ * the only moment they change is the moment a different file is picked. So
+ * picking one prints them, and the log holds the current selection and nothing
+ * else: it is cleared first, so what is on screen always describes the image
+ * the Flash button would send rather than a pile of everything looked at
+ * since.
+ *
+ * That log is now the panel's only one, shared with dump and restore, so
+ * picking an image also clears whatever a transfer left there. That is the
+ * right way round: the clear is what keeps the readout describing the image in
+ * hand, and a finished transfer's log is history the moment you go looking at
+ * firmware instead.
+ */
+function showImageDetails() {
+  clearLog('progress-log');
   const file = fileByName($('firmware-file').value);
   if (!file) {
-    log('firmware-log', 'no image selected', true);
+    log('progress-log', 'no image selected');
     return;
   }
-  for (const line of describeFile(file).split('\n')) log('firmware-log', line);
+  for (const line of describeFile(file).split('\n')) log('progress-log', line);
+}
+
+/* Other… opens a file picker instead of naming an image.
+ *
+ * It is the way to reach a build that was never published - a local compile, a
+ * test image - without going to Browse to drop it and coming back. Whichever
+ * image was chosen before is remembered, because Other… is not a selection:
+ * cancelling the dialog has to leave the list on the image it was already on
+ * rather than on a word that is not a file. */
+let lastImage = '';
+
+$('firmware-file').addEventListener('change', (event) => {
+  if (event.target.value === FIRMWARE_OTHER) {
+    $('firmware-input').click();
+    return;
+  }
+  lastImage = event.target.value;
+  showImageDetails();
+});
+
+/** Put the list back on the image it was showing before Other… was picked. */
+function restoreImageChoice() {
+  const images = $('firmware-file');
+  images.value = [...images.options].some((o) => o.value === lastImage) ? lastImage : '';
+  if (!images.value) images.value = FIRMWARE_OTHER;
+}
+
+$('firmware-input').addEventListener('cancel', restoreImageChoice);
+$('firmware-input').addEventListener('change', async (event) => {
+  const [chosen] = event.target.files;
+  event.target.value = '';   // so picking the same file twice fires again
+  if (!chosen) {
+    restoreImageChoice();
+    return;
+  }
+  // offer() refuses anything that is not a bootloader image and says so, and
+  // leaves the selection alone when it does - so put it back.
+  offer(chosen.name, new Uint8Array(await chosen.arrayBuffer()), fileDate(chosen));
+  if ($('firmware-file').value === FIRMWARE_OTHER) restoreImageChoice();
+  else lastImage = $('firmware-file').value;
 });
 
 $('do-flash').addEventListener('click', async () => {
-  if (!portsReady(false, 'firmware-log')) return;
+  if (!portsReady(false, 'progress-log')) return;
   const file = fileByName($('firmware-file').value);
   if (!file) {
-    log('firmware-log', 'no image selected', true);
+    log('progress-log', 'no image selected', true);
     return;
   }
   // The header check is the whole reason library.classify exists: a backup and
   // a firmware image are both .syx, and sending the wrong one to a bootloader
   // is not a recoverable mistake.
   if (file.kind !== library.KIND_FIRMWARE) {
-    log('firmware-log', `${file.name} is not a firmware image — refusing to flash it`, true);
+    log('progress-log', `${file.name} is not a firmware image — refusing to flash it`, true);
     return;
   }
 
@@ -1039,21 +1446,21 @@ $('do-flash').addEventListener('click', async () => {
   try {
     messages = protocol.splitMessages(file.bytes);
   } catch (error) {
-    log('firmware-log', `cannot read ${file.name}: ${error.message ?? error}`, true);
+    log('progress-log', `cannot read ${file.name}: ${error.message ?? error}`, true);
     return;
   }
 
   setBusy(true);
-  log('firmware-log', `flashing ${messages.length} messages at ${DEFAULT_FLASH_DELAY_MS}ms…`);
+  log('progress-log', `flashing ${messages.length} messages at ${DEFAULT_FLASH_DELAY_MS}ms…`);
   const outcome = await transfer.flash(state.ports, messages, DEFAULT_FLASH_DELAY_MS, {
     progress: (done, total, label) => {
-      setProgress('firmware-progress', done, total);
+      setProgress('progress-bar', done, total);
       status(`${done}/${total}  ${label}`);
     },
     shouldStop,
   });
-  for (const failure of outcome.failures) log('firmware-log', failure, true);
-  if (outcome.ok) log('firmware-log', 'sent. The unit restarts on its own.');
+  for (const failure of outcome.failures) log('progress-log', failure, true);
+  if (outcome.ok) log('progress-log', 'sent. The unit restarts on its own.');
   setBusy(false);
 });
 
@@ -1070,12 +1477,13 @@ window.addEventListener('beforeunload', (event) => {
   event.returnValue = '';
 });
 
-$('release-tag').value = state.settings.releaseTag ?? 'latest';
-$('releases-link').href = `https://github.com/${state.repo}/releases`;
-$('releases-link').textContent = `${state.repo} releases`;
 if (!midi.isSupported()) $('unsupported').hidden = false;
 refreshPorts();
 refreshFiles();
 refreshBrowse();
 refreshUndoButtons();
 updateConnection();
+// Last, and not awaited: it is one same-origin fetch that fills the Image
+// picker, and nothing above it should wait on the network to finish painting.
+loadDeployedFirmware();
+$('dump-name').value = defaultDumpName();

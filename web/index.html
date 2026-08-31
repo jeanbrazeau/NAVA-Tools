@@ -31,10 +31,10 @@
        button sit beside it rather than inside it. -->
   <div class="shell-head">
     <nav class="tabs" role="tablist">
+      <!-- The order the work usually happens in: pick the ports, move the data,
+           then look at what came back. -->
       <button role="tab" aria-selected="true" aria-controls="panel-device" id="tab-device"><u>D</u>EVICE</button>
       <button role="tab" aria-selected="false" aria-controls="panel-browse" id="tab-browse"><u>B</u>ROWSE</button>
-      <button role="tab" aria-selected="false" aria-controls="panel-transfer" id="tab-transfer"><u>T</u>RANSFER</button>
-      <button role="tab" aria-selected="false" aria-controls="panel-firmware" id="tab-firmware"><u>F</u>IRMWARE</button>
     </nav>
     <div class="shell-status">
       <button id="enable-midi" class="btn default">Enable MIDI</button>
@@ -45,40 +45,129 @@
 
   <section id="panel-device" role="tabpanel" aria-labelledby="tab-device">
 
-    <p class="hint">
-      Pick the MIDI out the Nava listens on and the MIDI in it answers on. They
-      are remembered by name, not by position — an index moves whenever a USB
-      device is added or removed.
-    </p>
+    <!-- The whole job in three lines, before any of the controls it talks
+         about: what to do, in the order you do it, and the one thing that can
+         go wrong while you are still reaching for the power switch. The panel
+         below is those steps laid out - ports, image, Flash. -->
+    <fieldset class="group">
+      <legend>Flashing Firmware</legend>
+      <p>
+        Enable MIDI and then pick the MIDI out port the Nava listens on and the
+        MIDI in port it answers on.
+      </p>
+      <p>
+        Hold steps <kbd>1</kbd>, <kbd>3</kbd> and <kbd>5</kbd> while powering on
+        the NAVA, select firmware and press Flash.
+      </p>
+      <p>
+        The device will reboot into the main operating system if no firmware has
+        begun transferring after 30 seconds.
+      </p>
+    </fieldset>
 
     <div class="row">
       <fieldset class="group">
-        <legend>Output: <span class="muted">host → Nava</span></legend>
+        <legend>MIDI OUTPUT to NAVA</legend>
         <ul id="out-ports" class="radios"></ul>
       </fieldset>
       <fieldset class="group">
-        <legend>Input: <span class="muted">Nava → host</span></legend>
+        <legend>MIDI INPUT from NAVA</legend>
         <ul id="in-ports" class="radios"></ul>
       </fieldset>
     </div>
 
+    <!-- Flashing lives with the ports it flashes through rather than in a tab
+         of its own. There is nothing left to choose beforehand: the firmware
+         repository's release workflow commits the current image beside this
+         page, so the app loads it on startup and the picker is already filled.
+         Anything else - an older tag, a fork - is still a .syx dropped on the
+         Browse tab, which is how any other file gets in. -->
     <fieldset class="group">
-      <legend>What the unit has to be doing</legend>
+      <legend>Firmware Image Select</legend>
+      <!-- The list and the button it feeds, on one line: the legend already
+           says what the list is, so a label over it would only say Image
+           again. The select takes the slack, which puts Flash hard right.
+
+           No Inspect button either: picking an image inspects it, which is the
+           only time the answer changes. Flash is the one irreversible thing on
+           the page, so it is the one control drawn as solid ink. -->
+      <div class="image-pick">
+        <select id="firmware-file" aria-label="Firmware image"><option value="">— loading the deployed image —</option></select>
+        <button id="do-flash" class="btn primary">Flash</button>
+      </div>
+      <!-- The picker behind the list's "Other…" entry. Its own input rather
+           than the one Browse uses: that one takes several files and drops
+           them into the file list, and this one takes a single image and
+           selects it here. -->
+      <input id="firmware-input" type="file" accept=".syx,.SYX,.hex,.HEX" hidden>
+    </fieldset>
+
+
+    <!-- One Progress box for the panel: flashing and dumping never run at once
+         - the buttons for both are disabled while either is going - so a second
+         box only ever meant one of them sat empty. It sits between the firmware
+         controls and the pattern ones, in reach of both. -->
+    <fieldset class="group">
+      <legend>Progress</legend>
+      <progress id="progress-bar" value="0" max="1"></progress>
+      <pre id="progress-log" class="paper log"></pre>
+    </fieldset>
+
+    <!-- The state the unit has to be in for either of the two boxes below, so
+         it is said once above both rather than in whichever one you happened to
+         read first. -->
+    <fieldset class="group">
+      <legend>SysEx transfers</legend>
       <p>
-        <strong>Backup and restore</strong> need the unit stopped and on the SysEx
-        config page: <kbd>SHIFT</kbd> + <kbd>TEMPO</kbd> to <code>type / select</code>.
-        That is where the firmware listens; anywhere else, requests are ignored.
-        Entering the page flushes pending edits to EEPROM and leaving it reloads
-        the current bank, so a restore takes effect without a power cycle.
-      </p>
-      <p>
-        <strong>Flashing</strong> needs the unit in bootloader mode: hold steps
-        <kbd>1</kbd>, <kbd>3</kbd> and <kbd>5</kbd> while powering it on. The
-        panel does not react afterwards — it is no longer running the firmware —
-        and the unit restarts on its own when the transfer finishes.
+        The unit must be stopped and on the SysEx config page:
+        <kbd>SHIFT</kbd> + <kbd>TEMPO</kbd> to <code>type / select</code>.
       </p>
     </fieldset>
+
+    <!-- Dump and restore side by side: the same grid asking two questions -
+         what to take off the unit, and what to put back - and the answer to
+         one is usually read against the other. -->
+    <div class="row transfer-row">
+      <fieldset class="group">
+        <legend>DUMP patterns from NAVA</legend>
+        <!-- Banks down the side, the sixteen slots across, and the tracks as
+             a last row of the same columns - built by app.js. -->
+        <div id="dump-matrix" class="matrix"></div>
+        <label class="check"><input id="dump-config" type="checkbox" checked> Config record</label>
+        <!-- Seeded with the date by app.js, and the name the save dialog opens
+             on. Editable because the dialog is where you would otherwise have
+             to retype it, and by then the dump has already been asked for. -->
+        <label class="field">Save as
+          <input id="dump-name" spellcheck="false">
+        </label>
+        <div class="buttons">
+          <button id="dump-all" class="btn" type="button">Select all</button>
+          <button id="dump-none" class="btn" type="button">Select none</button>
+          <button id="do-dump" class="btn primary">Dump</button>
+        </div>
+      </fieldset>
+
+      <fieldset class="group">
+        <legend>RESTORE patterns to NAVA</legend>
+        <!-- Same grid, but only what the chosen file actually holds is
+             selectable - see syncRestoreMatrix. -->
+        <div id="restore-matrix" class="matrix"></div>
+        <label class="check"><input id="restore-config" type="checkbox" checked> Config record</label>
+        <!-- Under the grid rather than over it, so the two boxes line up: the
+             grid is the thing you compare between them, and it starts at the
+             same height on both sides. -->
+        <label class="field">Backup
+          <select id="restore-file"><option value="">— load a .syx under Browse —</option></select>
+        </label>
+        <div class="buttons">
+          <button id="restore-all" class="btn" type="button">Select all</button>
+          <button id="restore-none" class="btn" type="button">Select none</button>
+          <button id="do-restore" class="btn primary">Restore</button>
+        </div>
+      </fieldset>
+    </div>
   </section>
+
 
   <section id="panel-browse" role="tabpanel" aria-labelledby="tab-browse" hidden>
 
@@ -146,78 +235,6 @@
     </div>
   </section>
 
-  <section id="panel-transfer" role="tabpanel" aria-labelledby="tab-transfer" hidden>
-
-    <div class="row">
-      <fieldset class="group">
-        <legend>Dump: <span class="muted">Nava → file</span></legend>
-        <label class="field">Patterns
-          <input id="dump-patterns" value="all" spellcheck="false" placeholder="all, C, A1-A16">
-        </label>
-        <label class="field">Tracks
-          <input id="dump-tracks" value="all" spellcheck="false" placeholder="all, 1-4">
-        </label>
-        <label class="check"><input id="dump-config" type="checkbox" checked> Config record</label>
-        <div class="buttons"><button id="do-dump" class="btn default">Dump</button></div>
-      </fieldset>
-
-      <fieldset class="group">
-        <legend>Restore: <span class="muted">file → Nava</span></legend>
-        <label class="field">Backup
-          <select id="restore-file"><option value="">— load a .syx under Browse —</option></select>
-        </label>
-        <p class="muted">Overwrites the patterns, tracks and setup the file names. Not reversible.</p>
-        <div class="buttons"><button id="do-restore" class="btn">Restore</button></div>
-      </fieldset>
-    </div>
-
-    <fieldset class="group">
-      <legend>Progress</legend>
-      <progress id="transfer-progress" value="0" max="1"></progress>
-      <pre id="transfer-log" class="paper log"></pre>
-    </fieldset>
-  </section>
-
-  <section id="panel-firmware" role="tabpanel" aria-labelledby="tab-firmware" hidden>
-
-    <div class="row">
-      <fieldset class="group">
-        <legend>Get an image</legend>
-        <label class="field">Release
-          <input id="release-tag" value="latest" spellcheck="false" placeholder="latest, 0.91b, Nava 0.91b">
-        </label>
-        <div class="buttons"><button id="do-download" class="btn">Download</button></div>
-        <p class="muted">
-          From the firmware repository's
-          <a id="releases-link" href="https://github.com/jeanbrazeau/Nava-Firmware/releases" target="_blank" rel="noopener">releases page</a>.
-          A tag, or the release title as the page shows it. Building from source
-          needs PlatformIO and a checkout — that stays in the <code>nava</code>
-          command line tool.
-        </p>
-      </fieldset>
-
-      <fieldset class="group">
-        <legend>Flash: <span class="muted">image → Nava</span></legend>
-        <label class="field">Image
-          <select id="firmware-file"><option value="">— download one, or drop a .syx —</option></select>
-        </label>
-        <div class="buttons">
-          <button id="do-inspect" class="btn"><u>I</u>nspect</button>
-          <button id="do-flash" class="btn">Flash</button>
-        </div>
-        <p class="muted">
-          Unit in bootloader mode first. A partial image leaves a unit that will
-          not boot, so do not close the tab mid-flash.
-        </p>
-      </fieldset>
-    </div>
-
-    <fieldset class="group">
-      <legend>Progress</legend>
-      <progress id="firmware-progress" value="0" max="1"></progress>
-      <pre id="firmware-log" class="paper log"></pre>
-    </fieldset>
-  </section>
 
   </div>
 
