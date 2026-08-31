@@ -12,6 +12,8 @@
 
 :root {
   color-scheme: light only;
+  /* Everything inside <body> is drawn at this scale - see the note there. */
+  --scale: 0.8;
   --ink: #000;
   --paper: #fff;
   --face: #cfcfcf;   /* dialog fill */
@@ -37,6 +39,15 @@
 
 * { box-sizing: border-box; }
 
+/* The desktop, drawn here rather than on <body> so it sits outside the scale
+   below: the checkerboard is meant to be 2 hard pixels, and scaling it to 1.6
+   resamples the one thing in the design that must not be resampled. */
+html {
+  background-color: var(--paper);
+  background-image: var(--dither);
+  background-size: 2px 2px;
+}
+
 /* Any rule setting `display` on a tag or class outranks the user agent's
    [hidden] rule, so a hidden element renders anyway. That has now bitten the
    tab panels (`section`) and the alert box (`.alert`); one global rule is the
@@ -44,20 +55,25 @@
 [hidden] { display: none !important; }
 
 body {
+  /* The window furniture was drawn a fifth too large: at 100% it read as a
+     zoomed-in screenshot, and the size it is meant to be is the size it had at
+     80% browser zoom. That, baked in - one number rather than two hundred
+     hand-scaled px values, and the 1px rules that make this look like GEM are
+     still declared as 1px. Undoing it is deleting this line.
+
+     zoom, not transform: scale(), because zoom scales layout. A transform would
+     leave the box its old size and hand grid.js pointer coordinates in one
+     space and rectangles in another. */
+  zoom: var(--scale);
   margin: 0;
-  min-height: 100vh;
+  /* The viewport, in this element's own pre-scale units: 100vh would come out a
+     fifth short and leave the status bar floating above the bottom. */
+  min-height: calc(100vh / var(--scale));
   display: flex;
   flex-direction: column;
   color: var(--ink);
   font: 13px/1.45 var(--font);
   letter-spacing: 0.02em;
-  /* The 50% dither: two colours in a 2px checkerboard, which is how a 1-bit
-     display made grey. Drawn as an SVG rather than a conic gradient because a
-     gradient gets antialiased into mush at this size, and the whole point is
-     that the pixels are hard. */
-  background-color: var(--paper);
-  background-image: var(--dither);
-  background-size: 2px 2px;
   -webkit-font-smoothing: none;
   font-smooth: never;
 }
