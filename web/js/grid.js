@@ -339,7 +339,10 @@ export function patternChart(pattern, {
     if (payload) {
       // The draggable affordance. Only present when the chart is editable -
       // there is nothing to drag to on a read-only chart.
-      const handle = el('div', 'playhead-handle');
+      // The glyph rather than a CSS triangle: a shape built out of borders
+      // reads as a pennant hanging off the rule at this size, and the point of
+      // the marker is that it unmistakably points back along the loop.
+      const handle = el('div', 'playhead-handle', '\u25C0');
       handle.style.left = boundary;
       handle.style.touchAction = 'none';   // a drag here changes length, not scroll
       handle.title = `LAST STEP ${steps} — drag to change the pattern's length`;
