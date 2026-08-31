@@ -113,20 +113,33 @@
       <pre id="progress-log" class="paper log"></pre>
     </fieldset>
 
+    <!-- The state the unit has to be in for either of the two boxes below, so
+         it is said once above both rather than in whichever one you happened to
+         read first. -->
+    <fieldset class="group">
+      <legend>SysEx transfers</legend>
+      <p>
+        The unit must be stopped and on the SysEx config page:
+        <kbd>SHIFT</kbd> + <kbd>TEMPO</kbd> to <code>type / select</code>.
+      </p>
+    </fieldset>
+
     <!-- Dump and restore side by side: the same grid asking two questions -
          what to take off the unit, and what to put back - and the answer to
          one is usually read against the other. -->
     <div class="row">
       <fieldset class="group">
         <legend>DUMP patterns from NAVA</legend>
-        <p>
-          The unit must be stopped and on the SysEx config page:
-          <kbd>SHIFT</kbd> + <kbd>TEMPO</kbd> to <code>type / select</code>.
-        </p>
         <!-- Banks down the side, the sixteen slots across, and the tracks as
              a last row of the same columns - built by app.js. -->
         <div id="dump-matrix" class="matrix"></div>
         <label class="check"><input id="dump-config" type="checkbox" checked> Config record</label>
+        <!-- Seeded with the date by app.js, and the name the save dialog opens
+             on. Editable because the dialog is where you would otherwise have
+             to retype it, and by then the dump has already been asked for. -->
+        <label class="field">Save as
+          <input id="dump-name" spellcheck="false">
+        </label>
         <div class="buttons">
           <button id="dump-all" class="btn" type="button">Select all</button>
           <button id="dump-none" class="btn" type="button">Select none</button>
@@ -136,19 +149,24 @@
 
       <fieldset class="group">
         <legend>RESTORE patterns to NAVA</legend>
-        <label class="field">Backup
-          <select id="restore-file"><option value="">— load a .syx under Browse —</option></select>
-        </label>
         <!-- Same grid, but only what the chosen file actually holds is
              selectable - see syncRestoreMatrix. -->
         <div id="restore-matrix" class="matrix"></div>
         <label class="check"><input id="restore-config" type="checkbox" checked> Config record</label>
-        <p class="muted">Overwrites what it sends, on the unit. Not reversible.</p>
+        <!-- Under the grid rather than over it, so the two boxes line up: the
+             grid is the thing you compare between them, and it starts at the
+             same height on both sides. -->
+        <label class="field">Backup
+          <select id="restore-file"><option value="">— load a .syx under Browse —</option></select>
+        </label>
         <div class="buttons">
           <button id="restore-all" class="btn" type="button">Select all</button>
           <button id="restore-none" class="btn" type="button">Select none</button>
           <button id="do-restore" class="btn primary">Restore</button>
         </div>
+        <!-- Under the button rather than over it: it is what pressing that
+             button does, and the last thing read before pressing it. -->
+        <p class="muted">Overwrites what it sends, on the unit. Not reversible.</p>
       </fieldset>
     </div>
   </section>

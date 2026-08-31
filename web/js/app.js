@@ -176,6 +176,20 @@ function today() {
   return new Date().toISOString().slice(0, 10);
 }
 
+/** What the Save as box starts on: the date first, so a folder of these sorts
+ *  into the order they were taken. */
+const defaultDumpName = () => `${today()} NAVA Backup`;
+
+/** The name the save dialog opens on. `.syx` is appended rather than shown in
+ *  the box: it is not a choice, and an extension in an editable field is
+ *  something to accidentally delete. A box emptied entirely falls back to the
+ *  default rather than saving a file called nothing. */
+function dumpFileName() {
+  const typed = $('dump-name').value.trim();
+  const base = (typed || defaultDumpName()).replace(/\.syx$/i, '');
+  return `${base}.syx`;
+}
+
 /* ---------- tabs ---------- */
 
 for (const tab of document.querySelectorAll('[role="tab"]')) {
@@ -1074,7 +1088,7 @@ $('do-dump').addEventListener('click', async () => {
     return;
   }
 
-  const target = await pickSaveFile(`nava-backup-${today()}.syx`);
+  const target = await pickSaveFile(dumpFileName());
   if (!target) return;
 
   setBusy(true);
@@ -1364,3 +1378,4 @@ updateConnection();
 // Last, and not awaited: it is one same-origin fetch that fills the Image
 // picker, and nothing above it should wait on the network to finish painting.
 loadDeployedFirmware();
+$('dump-name').value = defaultDumpName();

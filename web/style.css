@@ -429,10 +429,15 @@ input[type="checkbox"]:checked::before {
    selected cells does read as a solid mass, which is the point: it is a filled
    region, and the row and column labels are what say where it starts. */
 table.matrix-grid { border-collapse: collapse; }
-/* line-height 0 because the cell is a button in a table cell, and a table cell
-   keeps a line box under an inline-level child - which is what was holding the
-   cells a pixel or two apart in both directions. */
-.matrix-grid th, .matrix-grid td { padding: 0; line-height: 0; }
+.matrix-grid th, .matrix-grid td { padding: 0; }
+/* Centred in its box, which only shows below the breakpoint - above it the
+   table is the full width and there is no slack to centre in. */
+table.matrix-grid { margin-inline: auto; }
+/* line-height 0 on the cells that hold a button, because a table cell keeps a
+   line box under an inline-level child and that was holding them a pixel or
+   two apart in both directions. Not on the headers: they hold text, and a
+   zero line box clips it. */
+.matrix-grid td { line-height: 0; }
 .matrix-head {
   font: inherit;
   font-size: 10px;
