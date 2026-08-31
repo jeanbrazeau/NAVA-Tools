@@ -385,13 +385,17 @@ u { text-decoration-thickness: 1px; text-underline-offset: 2px; }
  * change looks exactly like a pattern change: pick a control, the chart
  * underneath is rebuilt.
  */
+/* The rule the top tabs rest on, and that the chosen one breaks to open into
+   the sheet below - the same cue the window tabs use. */
 .control-bar {
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   justify-content: space-between;
   gap: 10px;
   flex-wrap: wrap;
-  margin-bottom: 8px;
+  margin: 0 -8px 8px;
+  padding: 6px 8px 0;
+  border-bottom: 1px solid var(--ink);
 }
 /* Banks are tabs, the same idiom as INST./EXT one row over: the chosen one
    takes the colour of the surface it opens onto and the others sit a step
@@ -408,17 +412,35 @@ u { text-decoration-thickness: 1px; text-underline-offset: 2px; }
 .detail-body { display: flex; align-items: flex-start; gap: 8px; }
 /* margin-top clears the chart's own padding and the ruler band above the first
    lane, so button 1 starts level with the first row. */
-.pattern-col { display: flex; flex-direction: column; flex: none; margin-top: 18px; }
+/* Tabs down the side, opening rightwards onto the same sheet the top ones open
+   downwards onto: the chosen one takes the paper's colour and steps over the
+   rule, the rest sit back in the dimmer grey. margin-top clears the ruler band
+   so PATTERN 1 starts level with the first lane. */
+.pattern-col {
+  display: flex;
+  flex-direction: column;
+  flex: none;
+  margin-top: var(--ruler);
+  border-right: 1px solid var(--ink);
+}
 .pattern-btn {
-  width: 34px;
+  width: 30px;
   height: var(--pattern-step);
   padding: 0;
   text-align: center;
-  border-bottom-width: 0;
+  background: var(--face-dim);
+  border: 1px solid var(--ink);
+  border-right: none;
+  border-bottom: none;
+  position: relative;
+  left: 0;
 }
-.pattern-btn:last-child { border-bottom-width: 1px; }
-.pattern-btn[aria-selected="true"] { background: var(--ink); color: var(--paper); }
-.pattern-btn[aria-selected="true"]:hover { background: var(--ink); }
+.pattern-btn:last-child { border-bottom: 1px solid var(--ink); }
+.pattern-btn:hover:not(:disabled):not([aria-selected="true"]) { background: var(--paper); }
+.pattern-btn[aria-selected="true"] {
+  background: var(--paper);
+  left: 1px;
+}
 
 /* The Files column's one permanent extra row. It does not open a picker like
    Save does, it switches Detail to the setup record, so it reads as a
@@ -456,11 +478,14 @@ pre.log .bad::before { content: "! "; }
  * relying on hue.
  */
 
-.chart {
+/* The paper moved out to the panel, which now holds the tabs on two edges as
+   well as the grid. The chart itself is just what is drawn on it. */
+.chart { overflow-x: auto; }
+
+.chart-panel {
   background: var(--paper);
   border: 1px solid var(--ink);
   padding: 8px;
-  overflow-x: auto;
 }
 
 /* INST. / EXT, the same folder-tab idiom as the window tabs one level up: the

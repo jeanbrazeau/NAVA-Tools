@@ -107,29 +107,34 @@
         <!-- The filename/item and undo/redo share one line so undo/redo survive
              a chart rebuild - app.js sets #detail-title for both the chart and
              the text views; grid.js no longer draws its own title. -->
-        <div id="detail-head" class="detail-head">
-          <span id="detail-title" class="detail-title"></span>
-          <div class="detail-actions">
-            <!-- Undo/redo glyphs: U+21B6 / U+21B7 - swap both here if the
-                 direction ever reads wrong. -->
-            <button id="undo-edit" class="btn icon" disabled title="Undo" aria-label="Undo">↶</button>
-            <button id="redo-edit" class="btn icon" disabled title="Redo" aria-label="Redo">↷</button>
-          </div>
-        </div>
         <!-- BANK on the left (only the banks this file actually has), INST./EXT
              on the right - now app.js's controls rather than grid.js's own
              chart-tabs, since a view applies to whichever pattern is chosen
              below rather than to one chart instance. -->
-        <div id="control-bar" class="control-bar">
-          <div id="bank-buttons" class="chart-tabs bank-buttons"></div>
-          <div class="chart-tabs">
-            <button id="view-inst" class="chart-tab" type="button" aria-selected="true">INST.</button>
-            <button id="view-ext" class="chart-tab" type="button" aria-selected="false">EXT</button>
+        <!-- One sheet of paper carrying the tabs on two edges and the grid
+             between them: the banks and views along the top, the patterns down
+             the side, all opening onto the same surface. -->
+        <div class="chart-panel">
+          <div id="detail-head" class="detail-head">
+            <span id="detail-title" class="detail-title"></span>
+            <div class="detail-actions">
+              <!-- Undo/redo glyphs: U+21B6 / U+21B7 - swap both here if the
+                   direction ever reads wrong. -->
+              <button id="undo-edit" class="btn icon" disabled title="Undo" aria-label="Undo">↶</button>
+              <button id="redo-edit" class="btn icon" disabled title="Redo" aria-label="Redo">↷</button>
+            </div>
           </div>
-        </div>
-        <div class="detail-body">
-          <div id="pattern-buttons" class="pattern-col"></div>
-          <div id="chart" hidden></div>
+          <div id="control-bar" class="control-bar">
+            <div id="bank-buttons" class="chart-tabs bank-buttons"></div>
+            <div class="chart-tabs">
+              <button id="view-inst" class="chart-tab" type="button" aria-selected="true">INST.</button>
+              <button id="view-ext" class="chart-tab" type="button" aria-selected="false">EXT</button>
+            </div>
+          </div>
+          <div class="detail-body">
+            <div id="pattern-buttons" class="pattern-col"></div>
+            <div id="chart" hidden></div>
+          </div>
         </div>
         <pre id="detail" class="paper">Load a .syx to see what is in it.</pre>
         <p id="legend" class="muted"></p>
