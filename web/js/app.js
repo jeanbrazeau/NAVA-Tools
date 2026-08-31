@@ -28,6 +28,10 @@ const DEFAULT_TIMEOUT = 3000;
 const DEFAULT_RETRIES = 2;
 const DEFAULT_FLASH_DELAY_MS = 250;
 
+// The image list's last entry, which opens a file picker rather than naming a
+// file. Only .syx names reach that list, so this cannot be one of them.
+const FIRMWARE_OTHER = '__other__';
+
 const SYSEX_PAGE_HINT =
   'Stop the sequencer and press SHIFT+TEMPO to the SysEx page ("type / select") first.';
 
@@ -373,17 +377,31 @@ function refreshFiles() {
   // date into the log underneath, so repeating them in the option is the same
   // sentence twice and a very wide select. The backup picker keeps its summary
   // - there is nothing under it that says what is in the file.
-  fillSelect($('firmware-file'), state.files.filter((f) => f.kind === library.KIND_FIRMWARE),
-    '— drop a .syx on Browse —', false);
+  const images = $('firmware-file');
+  fillSelect(images, state.files.filter((f) => f.kind === library.KIND_FIRMWARE), null, false);
+  // Last in the list, because it is not an image: it is the way to reach one
+  // that was never published - a local build, a test image - without going to
+  // Browse and coming back.
+  const other = document.createElement('option');
+  other.value = FIRMWARE_OTHER;
+  other.textContent = 'Other…';
+  images.appendChild(other);
+  // fillSelect leaves an empty value when there are no images at all, which
+  // would render the select blank. Other… is then the only thing it can say.
+  if (!images.value) images.value = FIRMWARE_OTHER;
 }
 
+/** `placeholder` null leaves the list with no blank entry at all - for the
+ *  image picker, which has an Other… of its own to offer instead. */
 function fillSelect(element, files, placeholder, withSummary = true) {
   const previous = element.value;
   element.replaceChildren();
-  const blank = document.createElement('option');
-  blank.value = '';
-  blank.textContent = placeholder;
-  element.appendChild(blank);
+  if (placeholder !== null) {
+    const blank = document.createElement('option');
+    blank.value = '';
+    blank.textContent = placeholder;
+    element.appendChild(blank);
+  }
   for (const file of files) {
     const option = document.createElement('option');
     option.value = file.name;
@@ -1040,7 +1058,45 @@ function showImageDetails() {
   for (const line of describeFile(file).split('\n')) log('firmware-log', line);
 }
 
-$('firmware-file').addEventListener('change', showImageDetails);
+/* Other… opens a file picker instead of naming an image.
+ *
+ * It is the way to reach a build that was never published - a local compile, a
+ * test image - without going to Browse to drop it and coming back. Whichever
+ * image was chosen before is remembered, because Other… is not a selection:
+ * cancelling the dialog has to leave the list on the image it was already on
+ * rather than on a word that is not a file. */
+let lastImage = '';
+
+$('firmware-file').addEventListener('change', (event) => {
+  if (event.target.value === FIRMWARE_OTHER) {
+    $('firmware-input').click();
+    return;
+  }
+  lastImage = event.target.value;
+  showImageDetails();
+});
+
+/** Put the list back on the image it was showing before Other… was picked. */
+function restoreImageChoice() {
+  const images = $('firmware-file');
+  images.value = [...images.options].some((o) => o.value === lastImage) ? lastImage : '';
+  if (!images.value) images.value = FIRMWARE_OTHER;
+}
+
+$('firmware-input').addEventListener('cancel', restoreImageChoice);
+$('firmware-input').addEventListener('change', async (event) => {
+  const [chosen] = event.target.files;
+  event.target.value = '';   // so picking the same file twice fires again
+  if (!chosen) {
+    restoreImageChoice();
+    return;
+  }
+  // offer() refuses anything that is not a bootloader image and says so, and
+  // leaves the selection alone when it does - so put it back.
+  offer(chosen.name, new Uint8Array(await chosen.arrayBuffer()), fileDate(chosen));
+  if ($('firmware-file').value === FIRMWARE_OTHER) restoreImageChoice();
+  else lastImage = $('firmware-file').value;
+});
 
 $('do-flash').addEventListener('click', async () => {
   if (!portsReady(false, 'firmware-log')) return;

@@ -68,11 +68,11 @@
 
     <div class="row">
       <fieldset class="group">
-        <legend>Output: <span class="muted">host → Nava</span></legend>
+        <legend>MIDI OUTPUT to NAVA</legend>
         <ul id="out-ports" class="radios"></ul>
       </fieldset>
       <fieldset class="group">
-        <legend>Input: <span class="muted">Nava → host</span></legend>
+        <legend>MIDI INPUT from NAVA</legend>
         <ul id="in-ports" class="radios"></ul>
       </fieldset>
     </div>
@@ -88,16 +88,17 @@
       <label class="field">Image
         <select id="firmware-file"><option value="">— loading the deployed image —</option></select>
       </label>
+      <!-- The picker behind the list's "Other…" entry. Its own input rather
+           than the one Browse uses: that one takes several files and drops
+           them into the file list, and this one takes a single image and
+           selects it here. -->
+      <input id="firmware-input" type="file" accept=".syx,.SYX,.hex,.HEX" hidden>
       <!-- No Inspect button: picking an image inspects it, which is the only
            time the answer changes. Flash is the one irreversible thing on the
            page, so it is the one control drawn as solid ink. -->
       <div class="buttons">
         <button id="do-flash" class="btn primary">Flash</button>
       </div>
-      <p class="muted">
-        Unit in bootloader mode first. A partial image leaves a unit that will
-        not boot, so do not close the tab mid-flash.
-      </p>
     </fieldset>
 
     <fieldset class="group">
