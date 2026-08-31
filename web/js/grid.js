@@ -17,6 +17,9 @@
  * different machines sharing a sequencer: one drives the analogue voices, the
  * other sends notes to whatever is on the ext channel. Stacking all 28 lanes
  * made a wall nobody could read, and the ext lanes are empty in most patterns.
+ * The tabs that pick between them are app.js's, not this file's - see the
+ * `view` option below - because which view is showing has to survive a bank
+ * or pattern change, which throws this whole chart away and builds another.
  */
 
 import {
@@ -70,34 +73,23 @@ const el = (tag, className, text) => {
  * before it, so the caller can mark the file unsaved and push the gesture
  * onto an undo stack.
  *
- * `view` and `lane` seed which tab and which row are selected, and
- * `onViewChange(view, lane)` fires whenever that changes. Neither is needed to
- * survive a length drag - that redraws itself in place - but a caller that
- * rebuilds this chart from scratch (app.js does, after an undo) needs them to
- * avoid resetting to the INST. tab and BASS DRUM every time.
+ * `view` and `lane` seed which of INST./EXT and which row are selected, and
+ * `onViewChange(view, lane)` fires whenever a row click changes the lane.
+ * Neither is needed to survive a length drag - that redraws itself in place -
+ * but a caller that rebuilds this chart from scratch (app.js does, for a
+ * bank, pattern or view change, and after an undo) needs them to avoid
+ * resetting to INST. and BASS DRUM every time.
  *
  * There is no title here - app.js owns #detail-title, which sits above both
  * this chart and the plain-text detail view and carries undo/redo, so it has
- * to survive this chart being rebuilt rather than living inside it. */
+ * to survive this chart being rebuilt rather than living inside it. The
+ * INST./EXT tabs are app.js's too, for the same reason: they pick which view
+ * this whole chart is asked to draw, so they have to outlive any one chart. */
 export function patternChart(pattern, {
   config = null, payload = null, onEdit = null,
   view: initialView = null, lane: initialLane = null, onViewChange = null,
 } = {}) {
   const root = el('div', 'chart');
-
-  // Static for the life of the chart: which ext tracks are used does not
-  // change with the pattern's length, so the tab needs no part in a rebuild.
-  const extCount = pattern.activeExtTracks().length;
-
-  const tabs = el('div', 'chart-tabs');
-  const instTab = el('button', 'chart-tab', 'INST.');
-  // The count is on the tab because the ext lanes are empty in most patterns,
-  // and a tab that opens onto sixteen blank rows should say so first.
-  const extTab = el('button', 'chart-tab', extCount ? `EXT (${extCount})` : 'EXT');
-  instTab.type = 'button';
-  extTab.type = 'button';
-  tabs.append(instTab, extTab);
-  root.appendChild(tabs);
 
   // Everything below is rebuilt whole by draw(), not patched cell by cell.
   // A length change moves which columns are struck through as "past the end"
@@ -200,8 +192,6 @@ export function patternChart(pattern, {
   };
 
   const paint = () => {
-    instTab.setAttribute('aria-selected', String(view === 'inst'));
-    extTab.setAttribute('aria-selected', String(view === 'ext'));
     instBody.hidden = view !== 'inst';
     extBody.hidden = view === 'inst';
     for (const [id, row] of rows) {
@@ -544,17 +534,6 @@ export function patternChart(pattern, {
     root.addEventListener('pointerdown', beginStroke);
     root.addEventListener('pointerdown', beginLength);
   }
-
-  instTab.addEventListener('click', () => {
-    view = 'inst';
-    paint();
-    onViewChange?.(view, chosen.inst);
-  });
-  extTab.addEventListener('click', () => {
-    view = 'ext';
-    paint();
-    onViewChange?.(view, chosen.ext);
-  });
 
   return root;
 }

@@ -97,10 +97,10 @@
         <div class="buttons">
           <button id="save-file" class="btn"><u>S</u>ave…</button>
         </div>
-      </fieldset>
-      <fieldset class="group col-items">
-        <legend>Contents</legend>
-        <ul id="items" class="listbox"></ul>
+        <!-- The one entry Contents used to carry that a bank/pattern picker
+             cannot: the setup record. Always present for a backup, disabled
+             when it has none - app.js flips that per file. -->
+        <button id="config-entry" class="btn config-btn" type="button" disabled>config / setup</button>
       </fieldset>
       <fieldset class="group col-detail">
         <legend>Detail</legend>
@@ -116,7 +116,21 @@
             <button id="redo-edit" class="btn icon" disabled title="Redo" aria-label="Redo">↷</button>
           </div>
         </div>
-        <div id="chart" hidden></div>
+        <!-- BANK on the left (only the banks this file actually has), INST./EXT
+             on the right - now app.js's controls rather than grid.js's own
+             chart-tabs, since a view applies to whichever pattern is chosen
+             below rather than to one chart instance. -->
+        <div id="control-bar" class="control-bar">
+          <div id="bank-buttons" class="bank-buttons"></div>
+          <div class="chart-tabs">
+            <button id="view-inst" class="chart-tab" type="button" aria-selected="true">INST.</button>
+            <button id="view-ext" class="chart-tab" type="button" aria-selected="false">EXT</button>
+          </div>
+        </div>
+        <div class="detail-body">
+          <div id="pattern-buttons" class="pattern-col"></div>
+          <div id="chart" hidden></div>
+        </div>
         <pre id="detail" class="paper">Load a .syx to see what is in it.</pre>
         <p id="legend" class="muted"></p>
       </fieldset>

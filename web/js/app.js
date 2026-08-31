@@ -37,7 +37,17 @@ const state = {
   ports: null,
   files: [],
   selectedFile: null,
-  selectedItem: null,
+  // Where Detail is looking within the selected backup: `bank` and `pattern`
+  // are the BANK/PATTERN pickers' own selection (pattern is the Item, or null
+  // once a file has none), `view` is INST./EXT - a panel-level control, so it
+  // is not reset by picking a different bank or pattern. `detailItem` is
+  // whichever Item Detail is actually showing - `pattern`, or the config
+  // record once "config / setup" is clicked - since viewing the setup record
+  // does not disturb the bank/pattern selection underneath it.
+  bank: null,
+  pattern: null,
+  view: 'inst',
+  detailItem: null,
   busy: false,
   stopRequested: false,
   settings: store.load(),
@@ -57,13 +67,13 @@ const history = new History();
 // that state without having to remember every edit that happened in between.
 const loadedSnapshots = new WeakMap();
 
-// Which tab and which lane the chart was showing, so rebuilding it - which
-// undo does, via refreshItems() - reopens on the same view instead of
-// resetting to INST./BASS DRUM. Keyed by item rather than kept as one value,
-// so switching to a different pattern and back does not carry the wrong
-// pattern's selection with it; switching items on purpose is exactly the case
-// that should NOT preserve the old view.
-const chartViews = new WeakMap();
+// Which lane the chart was showing in each view, so rebuilding it - a bank,
+// pattern or view change does this, and so does undo - reopens on the same
+// row instead of resetting to BASS DRUM. Keyed by item and then by view
+// ('inst'/'ext') rather than kept as one value, so switching to a different
+// pattern and back does not carry the wrong pattern's lane with it; switching
+// patterns on purpose is exactly the case that should NOT preserve it.
+const chartLanes = new WeakMap();
 
 /* ---------- small helpers ---------- */
 
@@ -364,56 +374,174 @@ function fileByName(name) {
   return state.files.find((f) => f.name === name) ?? null;
 }
 
-function selectFile(file) {
-  state.selectedFile = file;
-  state.selectedItem = null;
-  refreshFiles();
-  refreshItems();
+/* ---------- browse: banks and patterns ----------
+ *
+ * The Contents list used to let you click any item. In its place, Detail
+ * itself is the picker: BANK narrows to one 16-pattern block, PATTERN narrows
+ * to one slot in it, and the file's config record (if it has one) is reached
+ * from the "config / setup" row under Files instead of from a list entry.
+ */
+
+const patternBank = (item) => Math.floor(item.param / protocol.PTRN_PER_BANK);
+const patternSlot = (item) => item.param % protocol.PTRN_PER_BANK;
+
+/** The bank letter a bank index prints as, via the same mapping the firmware
+ *  and the CLI use - not re-derived by hand, and not assumed to stop at four
+ *  banks: MAX_BANK is 8, and a full backup uses all of them. */
+const bankLetter = (bank) => protocol.patternLabel(bank * protocol.PTRN_PER_BANK).charAt(0);
+
+/** bank index -> Map(slot 0..15 -> Item), built from whichever pattern items
+ *  the file actually has. Only a backup has any; everything else reads as no
+ *  banks at all, which is what leaves BANK, PATTERN and config / setup empty. */
+function patternsByBank(file) {
+  const banks = new Map();
+  if (!file || file.kind !== library.KIND_BACKUP) return banks;
+  for (const item of file.items) {
+    if (item.cmd !== protocol.NAVA_PTRN_DMP) continue;
+    const bank = patternBank(item);
+    if (!banks.has(bank)) banks.set(bank, new Map());
+    banks.get(bank).set(patternSlot(item), item);
+  }
+  return banks;
 }
 
-function refreshItems() {
-  const list = $('items');
-  list.replaceChildren();
-  $('legend').textContent = '';
+/** The lowest-numbered pattern a bank has, or null - what BANK lands on when
+ *  there is nothing already selected worth keeping. */
+function firstPattern(slots) {
+  for (let slot = 0; slot < protocol.PTRN_PER_BANK; slot += 1) {
+    if (slots.has(slot)) return slots.get(slot);
+  }
+  return null;
+}
+
+function fileConfigItem(file) {
+  if (!file || file.kind !== library.KIND_BACKUP) return null;
+  return file.items.find((i) => i.cmd === protocol.NAVA_CONFIG_DMP) ?? null;
+}
+
+function selectFile(file) {
+  state.selectedFile = file;
+  const banks = patternsByBank(file);
+  const bankKeys = [...banks.keys()].sort((a, b) => a - b);
+  state.bank = bankKeys[0] ?? null;
+  state.pattern = state.bank !== null ? firstPattern(banks.get(state.bank)) : null;
+  state.detailItem = state.pattern;
+  refreshFiles();
+  refreshBrowse();
+}
+
+function selectBank(bank) {
+  state.bank = bank;
+  const slots = patternsByBank(state.selectedFile).get(bank) ?? new Map();
+  // Stay on the same slot if this bank still has it - PATTERN 3 in bank A and
+  // PATTERN 3 in bank B are different patterns, but landing on the same slot
+  // number is less surprising than jumping to slot 1 for no reason.
+  const kept = state.pattern && slots.get(patternSlot(state.pattern)) === state.pattern;
+  selectPattern(kept ? state.pattern : firstPattern(slots));
+}
+
+function selectPattern(item) {
+  state.pattern = item;
+  state.detailItem = item;
+  refreshBrowse();
+}
+
+function selectView(view) {
+  if (state.view === view) return;
+  state.view = view;
+  // INST./EXT are controls for the pattern chart, so clicking one always
+  // shows it - if config / setup was on screen, this is how you get back.
+  if (state.pattern) state.detailItem = state.pattern;
+  refreshBrowse();
+}
+
+function selectConfig() {
+  const item = fileConfigItem(state.selectedFile);
+  if (!item) return;
+  state.detailItem = item;
+  refreshBrowse();
+}
+
+function refreshBankButtons() {
+  const wrap = $('bank-buttons');
+  wrap.replaceChildren();
+  const banks = patternsByBank(state.selectedFile);
+  for (const bank of [...banks.keys()].sort((a, b) => a - b)) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'btn bank-btn';
+    button.textContent = bankLetter(bank);
+    button.setAttribute('aria-selected', String(bank === state.bank));
+    button.addEventListener('click', () => selectBank(bank));
+    wrap.appendChild(button);
+  }
+}
+
+function refreshPatternButtons() {
+  const wrap = $('pattern-buttons');
+  wrap.replaceChildren();
+  const slots = (state.bank !== null && patternsByBank(state.selectedFile).get(state.bank)) || new Map();
+  for (let slot = 0; slot < protocol.PTRN_PER_BANK; slot += 1) {
+    const item = slots.get(slot) ?? null;
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'btn pattern-btn';
+    button.textContent = String(slot + 1);
+    button.disabled = !item;
+    button.setAttribute('aria-selected', String(item !== null && item === state.pattern));
+    if (item) button.addEventListener('click', () => selectPattern(item));
+    wrap.appendChild(button);
+  }
+}
+
+/** The count on the EXT button, so a tab that opens onto sixteen blank rows
+ *  says so first - moved here from grid.js along with the tabs themselves. */
+function extTrackCount(item) {
+  if (!item) return 0;
+  try {
+    return item.decoded().activeExtTracks().length;
+  } catch {
+    return 0;
+  }
+}
+
+function refreshViewButtons() {
+  const instButton = $('view-inst');
+  const extButton = $('view-ext');
+  const item = state.pattern;
+  const count = extTrackCount(item);
+  extButton.textContent = count ? `EXT (${count})` : 'EXT';
+  instButton.disabled = !item;
+  extButton.disabled = !item;
+  instButton.setAttribute('aria-selected', String(state.view === 'inst'));
+  extButton.setAttribute('aria-selected', String(state.view === 'ext'));
+}
+
+function refreshConfigEntry() {
+  const button = $('config-entry');
+  const item = fileConfigItem(state.selectedFile);
+  button.disabled = !item;
+  button.setAttribute('aria-selected', String(item !== null && item === state.detailItem));
+}
+
+function refreshBrowse() {
+  refreshBankButtons();
+  refreshPatternButtons();
+  refreshViewButtons();
+  refreshConfigEntry();
+
   const file = state.selectedFile;
-  if (!file) {
-    showDetail('Load a .syx to see what is in it.');
+  $('legend').textContent = '';
+  if (!file || file.kind !== library.KIND_BACKUP || !state.detailItem) {
+    showDetail(file ? describeFile(file) : 'Load a .syx to see what is in it.', detailTitle(file));
     return;
   }
 
-  if (file.kind !== library.KIND_BACKUP) {
-    const item = document.createElement('li');
-    item.className = 'empty';
-    item.textContent = file.kind === library.KIND_FIRMWARE ? 'firmware image' : 'unrecognised';
-    list.appendChild(item);
-    showDetail(describeFile(file), detailTitle(file));
-    return;
-  }
-
-  for (const entry of file.items) {
-    const item = document.createElement('li');
-    item.setAttribute('aria-selected', String(entry === state.selectedItem));
-    const summary = summariseItem(entry);
-    item.title = `${entry.label} — ${summary}`;
-    const name = document.createElement('span');
-    name.textContent = entry.label;
-    const sub = document.createElement('span');
-    sub.className = 'sub';
-    sub.textContent = summary;
-    item.append(name, sub);
-    item.addEventListener('click', () => {
-      state.selectedItem = entry;
-      refreshItems();
-    });
-    list.appendChild(item);
-  }
-
-  const chosen = state.selectedItem;
-  if (chosen?.cmd === protocol.NAVA_PTRN_DMP) {
-    showChart(file, chosen);
+  const item = state.detailItem;
+  if (item.cmd === protocol.NAVA_PTRN_DMP) {
+    showChart(file, item);
   } else {
-    $('legend').textContent = '';
-    showDetail(chosen ? describeItem(file, chosen) : describeFile(file), detailTitle(file, chosen));
+    showDetail(describeItem(file, item), detailTitle(file, item));
   }
 }
 
@@ -437,7 +565,9 @@ function showChart(file, item) {
     showDetail(`${item.label}: ${error.message ?? error}`, detailTitle(file, item));
     return;
   }
-  const remembered = chartViews.get(item);
+  // Per view, not per file-wide state: the same pattern can be looked at in
+  // INST. or EXT, and each remembers its own lane independently.
+  const lanes = chartLanes.get(item) ?? {};
   $('detail-title').textContent = detailTitle(file, item);
   const chart = $('chart');
   chart.replaceChildren(
@@ -447,25 +577,14 @@ function showChart(file, item) {
       // Restore, Save - reads the items, so an edit is live the moment it lands.
       payload: item.payload,
       onEdit: (before) => recordEdit(file, item, before),
-      view: remembered?.view ?? null,
-      lane: remembered?.lane ?? null,
-      onViewChange: (view, lane) => chartViews.set(item, { view, lane }),
+      view: state.view,
+      lane: lanes[state.view] ?? null,
+      onViewChange: (view, lane) => chartLanes.set(item, { ...lanes, [view]: lane }),
     }),
   );
   chart.hidden = false;
   $('detail').hidden = true;
   $('legend').textContent = grid.chartLegend(true);
-}
-
-function summariseItem(item) {
-  try {
-    const decoded = item.decoded();
-    if (item.cmd === protocol.NAVA_PTRN_DMP) return render.summarisePattern(decoded);
-    if (item.cmd === protocol.NAVA_TRACK_DMP) return `${decoded.used.length} pattern(s)`;
-    return 'setup';
-  } catch (error) {
-    return 'undecodable';
-  }
 }
 
 function describeFile(file) {
@@ -477,7 +596,7 @@ function describeFile(file) {
   if (file.errors.length) {
     lines.push('', ...file.errors.map((e) => `bad: ${e}`));
   }
-  if (file.kind === library.KIND_BACKUP) lines.push('', 'Pick an item on the left.');
+  if (file.kind === library.KIND_BACKUP) lines.push('', 'Pick a bank and pattern above, or config / setup on the left.');
   return lines.join('\n');
 }
 
@@ -540,35 +659,14 @@ function refreshUndoButtons() {
   $('redo-edit').disabled = !history.canRedo();
 }
 
-/** Update the Contents summaries in place after an edit.
- *
- * A summary carries the step count and the voices in use, so an edit makes it
- * wrong - most visibly a length drag, which changes the very number sitting in
- * the row. The text nodes are rewritten rather than calling refreshItems(),
- * because that rebuilds the detail pane as well: it would throw the chart away
- * and build a new one on every gesture, and fight the length drag, which
- * redraws itself while the pointer is still down.
- */
-function refreshItemSummaries() {
-  const file = state.selectedFile;
-  if (!file || file.kind !== library.KIND_BACKUP) return;
-  const rows = $('items').children;
-  file.items.forEach((entry, index) => {
-    const row = rows[index];
-    if (!row) return;
-    const summary = summariseItem(entry);
-    row.title = `${entry.label} — ${summary}`;
-    const sub = row.querySelector('.sub');
-    if (sub) sub.textContent = summary;
-  });
-}
-
 /** One history entry per gesture, not per cell - grid.js already fires
- *  `onEdit` once per drag, with the bytes as they stood before it. */
+ *  `onEdit` once per drag, with the bytes as they stood before it. Nothing
+ *  here touches the chart itself: it is mid-gesture, redrawing itself as
+ *  grid.js's own draw()/repaint() see fit, and does not need refreshBrowse()
+ *  rebuilding it out from under the pointer. */
 function recordEdit(file, item, before) {
   history.push({ file, item, before, after: item.payload.slice() });
   syncEditedFlag(file);
-  refreshItemSummaries();
   refreshUndoButtons();
   announceEditState(file);
 }
@@ -576,17 +674,19 @@ function recordEdit(file, item, before) {
 /** Show whatever the undo/redo just changed, then redraw it.
  *
  * The history is one chronological stack across every file, so an undo can
- * land on a pattern that is not the one on screen. It selects that pattern
- * rather than changing it quietly: an edit you cannot see undone is
- * indistinguishable from an undo that did nothing, and the next thing the user
- * does would be to press it again.
+ * land on a pattern in a different bank, or a different file, than the one on
+ * screen. It selects that bank and pattern rather than changing them quietly:
+ * an edit you cannot see undone is indistinguishable from an undo that did
+ * nothing, and the next thing the user does would be to press it again.
  */
 function afterHistoryChange(file, item) {
   syncEditedFlag(file);
   state.selectedFile = file;
-  state.selectedItem = item;
+  state.bank = patternBank(item);
+  state.pattern = item;
+  state.detailItem = item;
   refreshFiles();
-  refreshItems();          // redraws the chart from the record as it now reads
+  refreshBrowse();          // redraws the chart from the record as it now reads
   if ($('panel-browse').hidden) $('tab-browse').click();
   refreshUndoButtons();
   announceEditState(file);
@@ -611,6 +711,9 @@ function redoEdit() {
 
 $('undo-edit').addEventListener('click', undoEdit);
 $('redo-edit').addEventListener('click', redoEdit);
+$('config-entry').addEventListener('click', selectConfig);
+$('view-inst').addEventListener('click', () => selectView('inst'));
+$('view-ext').addEventListener('click', () => selectView('ext'));
 
 // Cmd+Z / Ctrl+Z to undo, Cmd+Shift+Z or Ctrl+Y to redo - but not while the
 // Transfer and Firmware panels' text fields have focus, where Z and Y are
@@ -934,5 +1037,6 @@ $('releases-link').textContent = `${state.repo} releases`;
 if (!midi.isSupported()) $('unsupported').hidden = false;
 refreshPorts();
 refreshFiles();
+refreshBrowse();
 refreshUndoButtons();
 updateConnection();

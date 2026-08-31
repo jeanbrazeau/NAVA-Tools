@@ -174,10 +174,9 @@ main {
 .row:last-child { margin-bottom: 0; }
 .row > * { flex: 1 1 20rem; min-width: 15rem; }
 
-/* The chart is the reason this panel exists, so it gets the room: the two lists
-   are pickers and stop being more useful past their content width. */
+/* The chart is the reason this panel exists, so it gets the room: the file
+   list is a picker and stops being more useful past its content width. */
 .browse-row > .col-files { flex: 0 1 15rem; }
-.browse-row > .col-items { flex: 0 1 16rem; }
 .browse-row > .col-detail { flex: 4 1 34rem; }
 
 /* GEM group boxes: a hairline rectangle with the label sitting on the edge. */
@@ -255,21 +254,9 @@ fieldset.group p:last-child { margin-bottom: 0; }
 }
 /* One row per entry, always. A wrapped filename turns a list box into a
    paragraph and the inverted selection stops reading as a row. Whatever gets
-   truncated, the full text is on the row's title.
-
-   The two lists truncate opposite ends, because they carry opposite shapes: a
-   file row is one long name, an item row is a short label ("A1") beside a long
-   summary. Squeezing "A1" down to "A…" to make room for the summary loses the
-   only part that identifies the row. */
+   truncated, the full text is on the row's title. */
 #files li > span {
   flex: 1 1 auto;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-#items li > span:first-child { flex: none; }
-#items li .sub {
-  flex: 0 1 auto;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -381,6 +368,48 @@ u { text-decoration-thickness: 1px; text-underline-offset: 2px; }
 }
 .detail-actions { display: flex; gap: 4px; flex: none; }
 
+/* ---------- Detail: bank / pattern / view controls ----------
+ *
+ * BANK picks which 16-pattern block the PATTERN column and INST./EXT below
+ * are looking at; INST./EXT picks which 16-column view of that pattern the
+ * chart draws. Both now live here rather than inside the chart itself - see
+ * grid.js's own comment on why chart-tabs moved out - so a bank or view
+ * change looks exactly like a pattern change: pick a control, the chart
+ * underneath is rebuilt.
+ */
+.control-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+.bank-buttons { display: flex; gap: 4px; }
+.bank-btn { min-width: 24px; padding: 2px 8px; text-align: center; }
+.bank-btn[aria-selected="true"] { background: var(--ink); color: var(--paper); }
+.bank-btn[aria-selected="true"]:hover { background: var(--ink); }
+
+/* The 1-16 pattern picker runs down the chart's left edge, level with the
+   instrument names inside it - the margin-top is the chart's own padding plus
+   its ruler row, so button 1 sits beside the first lane rather than the
+   chart's outer border. */
+/* The pattern column beside the chart. Deliberately NOT called .chart-row:
+   that class is already on every <tr> in the grid, and giving those rows
+   display:flex collapses the table's columns to slivers. */
+.detail-body { display: flex; align-items: flex-start; gap: 8px; }
+.pattern-col { display: flex; flex-direction: column; gap: 2px; flex: none; margin-top: 18px; }
+.pattern-btn { width: 34px; padding: 1px 0; text-align: center; }
+.pattern-btn[aria-selected="true"] { background: var(--ink); color: var(--paper); }
+.pattern-btn[aria-selected="true"]:hover { background: var(--ink); }
+
+/* The Files column's one permanent extra row. It does not open a picker like
+   Save does, it switches Detail to the setup record, so it reads as a
+   selectable row - inverted when chosen - rather than a command. */
+.config-btn { display: block; width: 100%; margin-top: 8px; text-align: left; }
+.config-btn[aria-selected="true"] { background: var(--ink); color: var(--paper); }
+.config-btn[aria-selected="true"]:hover { background: var(--ink); }
+
 /* ---------- paper areas ---------- */
 
 pre.paper {
@@ -418,14 +447,18 @@ pre.log .bad::before { content: "! "; }
 }
 
 /* INST. / EXT, the same folder-tab idiom as the window tabs one level up: the
-   chosen one takes the colour of the surface it opens onto - here the chart's
-   own paper - and the other sits a step back. */
+   chosen one takes the colour of the surface it opens onto - the chart's own
+   paper - and the other sits a step back. app.js puts these in the Detail
+   column's control bar rather than inside the chart now, so the strip's own
+   underline and bottom margin - meant for sitting flush above that paper -
+   are switched off there and the control bar supplies its own spacing. */
 .chart-tabs {
   display: flex;
   gap: 4px;
   margin-bottom: 8px;
   border-bottom: 1px solid var(--ink);
 }
+.control-bar .chart-tabs { margin-bottom: 0; border-bottom: none; }
 .chart-tab {
   background: var(--face-dim);
   border: 1px solid var(--ink);
