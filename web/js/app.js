@@ -469,7 +469,7 @@ function refreshBankButtons() {
   for (const bank of [...banks.keys()].sort((a, b) => a - b)) {
     const button = document.createElement('button');
     button.type = 'button';
-    button.className = 'btn bank-btn';
+    button.className = 'chart-tab bank-btn';
     button.textContent = bankLetter(bank);
     button.setAttribute('aria-selected', String(bank === state.bank));
     button.addEventListener('click', () => selectBank(bank));
