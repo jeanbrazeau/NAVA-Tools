@@ -81,9 +81,32 @@ decoded pattern would silently zero every field this decoder does not know
 about. `tests/web/edit.test.js` asserts it byte for byte — that the decoder
 reads back what was clicked, and that the reserved regions never move.
 
-Nothing is written to the file it came from. An edited file is marked in the
-list, Save… writes it out, and the tab asks before closing on top of unsaved
-work.
+**Where the loop ends** is a rule through the whole grid with a ◀ handle on it,
+dragged to set the pattern's length. That is the one thing about a pattern you
+want to see against the steps rather than read off a number beside them; the
+LAST STEP readout stays, because a drag is not pixel-precise and the number is
+where you confirm what you landed on. The grid reshapes under the pointer —
+columns past the end are struck through and stop being editable, and the ext
+wrap markers move too, since a record whose own ext-length byte is 0 takes its
+ext loop length from the pattern length.
+
+**↶ and ↷** in the corner of the Detail pane undo and redo, as do <kbd>Cmd</kbd>
+or <kbd>Ctrl</kbd> + <kbd>Z</kbd> and <kbd>Shift</kbd> + that. One entry per
+gesture: a drag across sixteen cells undoes as the one action it looked like,
+and so does a length drag. Whole-record snapshots rather than inverted edits —
+448 bytes is nothing, and an inverse that was wrong for one cycle would corrupt
+a record nothing downstream would question until it reached a machine.
+
+The history is one timeline across every file, which is what a single pair of
+arrows implies, so an undo can land on a pattern that is not on screen. It
+selects that pattern before redrawing: an undo you cannot see is
+indistinguishable from one that did nothing.
+
+Nothing is written to the file it came from. "Edited" means the bytes differ
+from how the file was loaded, compared byte for byte rather than remembering
+that a click happened — so undoing back to the start clears the marker, and
+saving moves the baseline. Save… writes the file out, and the tab asks before
+closing on top of unsaved work.
 
 **Transfer** dumps and restores. A dump asks where to save before it starts —
 a full backup takes minutes, and the browser will not open a file dialog that
