@@ -1211,3 +1211,11 @@ dialog::backdrop {
   .transfer-row > * { width: auto; flex: 1 1 0; min-width: 0; }
 }
 
+/* A bigger floor through the band where the two grids share the width. They
+   sit on the floor there rather than dividing what they are given, which left
+   the table stopping short of its box with sixty to eighty pixels of nothing
+   beside it. This spends that on the cells. */
+@media (min-width: 651px) and (max-width: 760px) {
+  .matrix-cell { min-width: 26px; min-height: 26px; }
+}
+
