@@ -57,6 +57,12 @@ export const INST_VEL_LOW = [0, 0, 25, 25, 25, 50, 111, 106, 25, 25, 25, 25, 0, 
 // PPQN ticks per step -> the division the panel shows.
 export const SCALE_NAMES = { 24: '1/16', 12: '1/32', 16: '1/16t', 32: '1/8t' };
 
+// The same four, in the order the panel's SCALE switch has them, which is not
+// the order a JS object hands back integer-like keys in (12, 16, 24, 32) and
+// not the order of resolution either. A picker has to be in the machine's
+// order, so it is written down rather than derived from SCALE_NAMES.
+export const SCALE_ORDER = [24, 12, 16, 32];
+
 export const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
 
 // Power-on ext track notes, EXT_TRACK_NOTES[] in define.h. Used when a backup

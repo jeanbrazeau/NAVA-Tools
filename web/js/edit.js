@@ -21,6 +21,7 @@ import {
   OFF_INST,
   OFF_SETUP,
   OFF_VELOCITY,
+  SCALE_ORDER,
   TOTAL_ACC,
 } from './records.js';
 
@@ -210,4 +211,16 @@ export function setShuffle(payload, value) {
 
 export function setFlamDepth(payload, value) {
   return setDial(payload, OFF_SETUP + 3, value);
+}
+
+/** Set the pattern's SCALE, as PPQN ticks per step.
+ *
+ * The four divisions are the only values the switch on the machine can be in,
+ * so anything else is refused rather than clamped: there is no nearest
+ * sensible division to round to, and writing an arbitrary PPQN would make a
+ * pattern the panel cannot display or the sequencer play. Returns the value
+ * the record now holds, which is the old one if the request was refused. */
+export function setScale(payload, ppqn) {
+  if (SCALE_ORDER.includes(ppqn)) payload[OFF_SETUP + 1] = ppqn;
+  return payload[OFF_SETUP + 1];
 }

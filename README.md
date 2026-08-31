@@ -91,15 +91,38 @@ ext loop length from the pattern length. The LAST STEP readout sits last in the
 row under the grid, hard right: it reports the handle, and the handle is at the
 right-hand end of the same rectangle.
 
-**SHUFFLE and FLAM** are eight indicator circles apiece rather than a number,
-and clicking one turns that dial to it. They are detents on a rotary, not
-quantities — nothing scales them and no other field reads them — so "5" says
-nothing about how far round that is where eight circles with one filled says it
-at a glance. Clicking the filled circle writes nothing, rather than pushing an
-undo entry that undoes to itself. A byte past the eighth position can only come
-from a record the machine never wrote, and a blank 0xFF slot decodes that way:
-it fills no circle and prints the raw number, instead of quietly showing
-position 0.
+**SHUFFLE and FLAM** are eight indicator circles apiece rather than a number.
+They are detents on a rotary, not quantities — nothing scales them and no other
+field reads them — so "5" says nothing about how far round that is where eight
+circles with one filled says it at a glance.
+
+The whole strip is the control, not the eight circles on it: press anywhere
+along it, gaps and the slack above and below included, and the dial goes to
+whichever circle the pointer is nearest and follows it until it lifts. An 8px
+circle is a hard thing to hit and a harder thing to hit eight times while
+comparing them, and the gesture a knob wants is a sweep. One sweep is one undo
+entry, the same as a paint stroke or a length drag. The arrow keys, Home and
+End turn it from the keyboard, which is what a radio group is expected to
+answer to.
+
+Landing on the position it is already in writes nothing. That matters more than
+it sounds: a drag crosses the filled circle constantly, and each crossing would
+otherwise rewrite the same byte and mark a clean file unsaved for an edit that
+did nothing. A byte past the eighth position can only come from a record the
+machine never wrote, and a blank 0xFF slot decodes that way: it fills no circle
+and prints the raw number, instead of quietly showing position 0.
+
+**SCALE** moved out of the readouts and up into the control bar, between the
+bank tabs and INST./EXT, where it can be changed rather than only read. It is
+picked from the four divisions the switch on the machine has — 1/16, 1/32,
+1/16t, 1/8t, in that order, which is neither the order of resolution nor the
+order a JS object hands back integer keys, so `records.SCALE_ORDER` writes it
+down. Deliberately not a tab: the banks and views open onto the sheet below and
+take its colour, and SCALE does not — it sets a property of the pattern already
+on that sheet, so it is a segmented control on the bar and the chosen division
+is an invert. Anything but those four PPQN values is refused rather than
+clamped; there is no nearest sensible division, and an arbitrary one would make
+a pattern the panel cannot show.
 
 **↶ and ↷** in the corner of the Detail pane undo and redo, as do <kbd>Cmd</kbd>
 or <kbd>Ctrl</kbd> + <kbd>Z</kbd> and <kbd>Shift</kbd> + that. One entry per

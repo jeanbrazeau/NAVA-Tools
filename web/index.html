@@ -126,6 +126,14 @@
           </div>
           <div id="control-bar" class="control-bar">
             <div id="bank-buttons" class="chart-tabs bank-buttons"></div>
+            <!-- SCALE sits between the two tab strips because it is neither:
+                 the banks and views pick what you are looking at, SCALE is a
+                 property of the pattern itself, picked from the four divisions
+                 the switch on the machine has. It was a readout under the grid
+                 and could not be changed. -->
+            <div id="scale-picker" class="seg" role="radiogroup" aria-label="SCALE">
+              <span class="seg-label">SCALE</span>
+            </div>
             <div class="chart-tabs">
               <button id="view-inst" class="chart-tab" type="button" aria-selected="true">INST.</button>
               <button id="view-ext" class="chart-tab" type="button" aria-selected="false">EXT</button>

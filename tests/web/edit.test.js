@@ -435,3 +435,48 @@ test('both dials clamp to their eight positions', () => {
     assert.equal(payload[offset], last);
   }
 });
+
+/* SCALE backs the picker in the control bar between the bank tabs and
+ * INST./EXT - see refreshScalePicker in app.js. */
+
+test('setScale writes one byte, for a division the machine has', () => {
+  const payload = scratchRecord();
+
+  for (const ppqn of records.SCALE_ORDER) {
+    const before = payload.slice();
+    assert.equal(edit.setScale(payload, ppqn), ppqn);
+    assert.equal(records.decodePattern(payload).scale, ppqn);
+    assert.equal(records.decodePattern(payload).scaleName, records.SCALE_NAMES[ppqn]);
+    // The first pass writes the byte the scratch record already had, so an
+    // unchanged record is a legitimate outcome here - what must never happen
+    // is a second byte moving.
+    const moved = changed(before, payload);
+    assert.ok(moved.length <= 1 && moved.every((o) => o === records.OFF_SETUP + 1), `moved ${moved}`);
+  }
+});
+
+test('setScale refuses a PPQN no division stands for', () => {
+  const payload = scratchRecord();
+  edit.setScale(payload, 24);
+  const before = payload.slice();
+
+  // Not clamped to the nearest: there is no nearest division, and an arbitrary
+  // PPQN is a pattern the panel cannot show and the sequencer cannot play.
+  for (const junk of [0, 13, 25, 255, -4, 24.5]) {
+    assert.equal(edit.setScale(payload, junk), 24, `${junk} should have been refused`);
+  }
+  assert.deepEqual(changed(before, payload), []);
+});
+
+test('the scale order is the panel switch order, not the object key order', () => {
+  // Object.keys hands back integer-like keys ascending - 12, 16, 24, 32 - which
+  // is not the order the switch has them in. Pinned because the picker reads
+  // wrong, not broken, if this ever quietly falls back to that.
+  assert.deepEqual(records.SCALE_ORDER, [24, 12, 16, 32]);
+  assert.deepEqual(
+    records.SCALE_ORDER.map((p) => records.SCALE_NAMES[p]),
+    ['1/16', '1/32', '1/16t', '1/8t'],
+  );
+  // And every division the picker offers is one the decoder can name.
+  for (const ppqn of records.SCALE_ORDER) assert.ok(records.SCALE_NAMES[ppqn]);
+});
