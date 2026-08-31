@@ -240,8 +240,13 @@ fieldset.group {
   min-width: 0;
 }
 section > fieldset.group:last-child { margin-bottom: 0; }
+/* Centred on the box's top rule rather than sitting at its left corner. An
+   auto margin either side is how a legend is moved along its own edge - it is
+   laid out on the border, not in the flow, so text-align on the fieldset does
+   not reach it. */
 fieldset.group legend {
   padding: 0 6px;
+  margin-inline: auto;
   background: var(--face);
 }
 fieldset.group p { margin: 0 0 8px; }
@@ -697,7 +702,9 @@ td.cell.editable.loud:hover { box-shadow: inset 0 0 0 2px var(--paper); }
 .playhead-handle:hover, .playhead-handle:active { font-size: 16px; top: -5px; }
 
 
-.chart-readouts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+/* The gap is read back by .readout-break's negative margin, which cancels one
+   of them - change it here and change it there. */
+.chart-readouts { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
 .readout {
   border: 1px solid var(--ink);
   padding: 1px 7px;
@@ -756,6 +763,10 @@ td.cell.editable.loud:hover { box-shadow: inset 0 0 0 2px var(--paper); }
   padding-left: 0;
   align-items: stretch;
 }
+/* Stretch is for the strip, not for the word beside it: a stretched label is a
+   full-height box with its text sitting at the top of it, which read as the
+   label riding an inch high. */
+.readout-bare .readout-label { align-self: center; }
 
 /* SHUFFLE and FLAM as the eight-position dials they are on the panel. Round
    here against a rulebook that rounds nothing, because these are the one thing
@@ -983,6 +994,10 @@ dialog::backdrop {
    would draw more attention than the label does. */
 @media (max-width: 900px) {
   .readout-bare .readout-label { display: none; }
+  /* With the label gone the box is nothing but the strip, so the padding that
+     held the strip off the box's right edge is holding it off nothing - seven
+     invisible pixels between SCALE and whatever follows it. */
+  .readout-bare { padding-right: 0; }
 }
 
 /* Where the readouts stop fitting on one line, they fold into a square rather
@@ -1015,7 +1030,7 @@ dialog::backdrop {
     display: block;
     flex-basis: 100%;
     height: 0;
-    margin-bottom: -6px;
+    margin-bottom: -4px;   /* one .chart-readouts gap, cancelled */
   }
   .readout-flam { order: 3; }
   .readout-mid { order: 4; }
