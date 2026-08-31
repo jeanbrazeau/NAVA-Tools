@@ -311,6 +311,21 @@ fieldset.group p:last-child { margin-bottom: 0; }
   padding: 2px 5px;
   cursor: pointer;
   white-space: nowrap;
+  /* Double-clicking a row opens a rename, and a double click on text otherwise
+     selects the word under it - which is not what the gesture is for here. */
+  user-select: none;
+}
+/* The rename box, sized and coloured to sit exactly where the name was so the
+   row does not jump when it opens. */
+.listbox input.rename {
+  display: block;
+  width: 100%;
+  margin: -2px 0;
+  padding: 1px 3px;
+  border: 1px solid var(--ink);
+  background: var(--paper);
+  color: var(--ink);
+  font: inherit;
 }
 /* One row per entry, always. A wrapped filename turns a list box into a
    paragraph and the inverted selection stops reading as a row. Whatever gets

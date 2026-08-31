@@ -169,6 +169,15 @@ arrows implies, so an undo can land on a pattern that is not on screen. It
 selects that pattern before redrawing: an undo you cannot see is
 indistinguishable from one that did nothing.
 
+**Double-click a file's name** to rename it, in place in the list rather than
+through a dialog: the name is already on screen and the row is already the
+right shape to type in. Enter or clicking away keeps it, Escape puts it back,
+and the extension survives a name typed without one - `.syx` is what makes the
+file mean anything to the next thing that opens it. The name is the key
+everything downstream looks the file up by, so two files cannot share one and
+an empty name is refused; either way the old name stays and the status line
+says why.
+
 Nothing is written to the file it came from. "Edited" means the bytes differ
 from how the file was loaded, compared byte for byte rather than remembering
 that a click happened — so undoing back to the start clears the marker, and

@@ -359,6 +359,67 @@ function addFile(name, bytes, dated = null) {
   return file;
 }
 
+/** Rename a file by double-clicking its row.
+ *
+ * In place rather than through a dialog: the name is already on screen and the
+ * row is already the right shape to type in. Enter or clicking away keeps it,
+ * Escape puts it back.
+ *
+ * The name is the key everything downstream looks the file up by - the Restore
+ * and Image pickers, Save…, and addFile's own replace-by-name - so two files
+ * cannot share one, and an empty name is not a name. Either is refused and the
+ * old one stays, said in the status line rather than in a dialog, because a
+ * rejected rename is not worth a modal.
+ *
+ * A name typed without an extension keeps the one it had. `.syx` is what makes
+ * the file mean anything to the next thing that opens it, and losing it to a
+ * rename is not something anyone intends. */
+function renameInPlace(row, file) {
+  if (row.querySelector('input')) return;
+  const box = document.createElement('input');
+  box.className = 'rename';
+  box.value = file.name;
+  box.spellcheck = false;
+  row.replaceChildren(box);
+  box.focus();
+  // The extension is selected out of the way rather than included: the stem is
+  // what a rename is usually about.
+  const dot = file.name.lastIndexOf('.');
+  box.setSelectionRange(0, dot > 0 ? dot : file.name.length);
+
+  let done = false;
+  const finish = (keep) => {
+    if (done) return;
+    done = true;
+    if (keep) commitRename(file, box.value);
+    refreshFiles();
+    refreshBrowse();
+  };
+  box.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter') finish(true);
+    else if (event.key === 'Escape') finish(false);
+    else return;
+    event.preventDefault();
+  });
+  box.addEventListener('blur', () => finish(true));
+  // The row's own click selects the file; a click inside the box is not that.
+  box.addEventListener('click', (event) => event.stopPropagation());
+  box.addEventListener('dblclick', (event) => event.stopPropagation());
+}
+
+function commitRename(file, typed) {
+  const wanted = typed.trim();
+  if (!wanted || wanted === file.name) return;
+  const dot = file.name.lastIndexOf('.');
+  const named = wanted.includes('.') || dot <= 0 ? wanted : wanted + file.name.slice(dot);
+  if (state.files.some((f) => f !== file && f.name === named)) {
+    status(`${named} is already loaded — not renamed`);
+    return;
+  }
+  file.name = named;
+  status(`renamed to ${named}`);
+}
+
 function refreshFiles() {
   const list = $('files');
   list.replaceChildren();
@@ -381,6 +442,7 @@ function refreshFiles() {
     name.textContent = file.edited ? `\u2022 ${file.name}` : file.name;
     item.append(name);
     item.addEventListener('click', () => selectFile(file));
+    item.addEventListener('dblclick', () => renameInPlace(item, file));
     list.appendChild(item);
   }
 
