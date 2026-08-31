@@ -189,8 +189,16 @@ between items, which is where a control would reattach; nothing sets it. A flash
 is paced by scheduled MIDI timestamps rather than by a timer, so switching tabs
 mid-flash does not stall it.
 
-Between 761 and 850 the readouts are told where to break rather than left to
-wrap where they run out. That band is the narrowest the Detail column gets —
+The readouts give way in stages as the column narrows. At 900 the word SCALE
+goes — the row has 46px of slack left at that point and the label and its gap
+are 37 of them, and four buttons reading 1/16, 1/32, 1/16t and 1/8t do not need
+telling what they are. It stays gone below that rather than coming back, since
+a label that vanished at 900 and reappeared at 850 would draw more attention
+than the label does; the strip keeps its aria-label, so a screen reader is not
+affected.
+
+Between 761 and 850 the readouts are then told where to break rather than left
+to wrap where they run out. That band is the narrowest the Detail column gets —
 two columns still, with the file list taking its 15rem — and left to itself the
 row strands LAST STEP alone on a second line. The break goes after SHUFFLE
 instead, so it reads as two deliberate rows: SHUFFLE, then FLAM with SCALE and

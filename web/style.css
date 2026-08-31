@@ -949,6 +949,19 @@ dialog::backdrop {
   }
 }
 
+/* The last thing that can go before the row has to break. At 900 the readouts
+   have 46px of slack left and are losing 30 for every 30 the window loses; the
+   word SCALE and the gap after it are 37 of them, and the four divisions beside
+   it read as a scale without being told - 1/16 and 1/8t are not ambiguous.
+   The strip keeps its aria-label, so nothing is lost to a screen reader.
+
+   Hidden from here down rather than only in a band: it is worth more width the
+   narrower things get, and a label that vanished at 900 and came back at 850
+   would draw more attention than the label does. */
+@media (max-width: 900px) {
+  .readout-bare .readout-label { display: none; }
+}
+
 /* The band where the Detail column is at its narrowest: two columns still, but
    with the file list taking its 15rem out of the width, so the readouts no
    longer fit on one line. Left to itself the row wraps wherever it runs out and
