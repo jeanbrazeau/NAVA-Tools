@@ -315,7 +315,7 @@ function portsReady(needInput, logId) {
  * time read out of the file: the release date from firmware/index.json for the
  * deployed image, and the file's own modified time for one off a disk. Absent
  * is a legitimate answer and prints nothing. */
-function addFile(name, bytes, dated = null, datedFrom = null) {
+function addFile(name, bytes, dated = null) {
   // A .hex is converted on the way in rather than offered as a third kind of
   // file: what the bootloader accepts is the .syx, and every path downstream
   // takes bytes that are already encoded.
@@ -334,7 +334,6 @@ function addFile(name, bytes, dated = null, datedFrom = null) {
   const file = library.load(label, data);
   if (dated) {
     file.dated = dated;
-    file.datedFrom = datedFrom;
   }
   for (const item of file.items) loadedSnapshots.set(item, item.payload.slice());
   state.files = [file, ...state.files.filter((f) => f.name !== label)];
@@ -650,15 +649,24 @@ function showChart(file, item) {
   $('legend').textContent = grid.chartLegend(true);
 }
 
+/** An image, in the order you want to know it: what it is, when it was made,
+ *  how big, how long to send. Null for anything that is not firmware.
+ *
+ *  Its own shape rather than the generic two-line header plus extras, which
+ *  said the size twice - once as "N bytes - firmware, M bytes, P pages" and
+ *  again as "M bytes of flash in P pages" - for a reader who only ever wanted
+ *  it once. */
+function firmwareLines(file) {
+  if (file.kind !== library.KIND_FIRMWARE) return null;
+  const lines = [file.name];
+  if (file.dated) lines.push(`compilation date ${file.dated}`);
+  lines.push(`${file.size} bytes: ${file.flashBytes} bytes, ${file.pages} pages`);
+  lines.push(`about ${Math.ceil((file.pages * DEFAULT_FLASH_DELAY_MS) / 1000)}s to send`);
+  return lines;
+}
+
 function describeFile(file) {
-  const lines = [`${file.name}`, `${file.size} bytes — ${file.summary()}`];
-  if (file.kind === library.KIND_FIRMWARE) {
-    lines.push('', `${file.flashBytes} bytes of flash in ${file.pages} pages`);
-    lines.push(`about ${Math.ceil((file.pages * DEFAULT_FLASH_DELAY_MS) / 1000)}s to send`);
-    // See addFile: the image carries no build stamp, so the line names which
-    // date this is rather than calling it a build time it cannot vouch for.
-    if (file.dated) lines.push(`${file.datedFrom ?? 'dated'} ${file.dated}`);
-  }
+  const lines = firmwareLines(file) ?? [`${file.name}`, `${file.size} bytes — ${file.summary()}`];
   if (file.errors.length) {
     lines.push('', ...file.errors.map((e) => `bad: ${e}`));
   }
@@ -835,13 +843,13 @@ for (const type of ['dragleave', 'drop']) {
 dropzone.addEventListener('drop', async (event) => {
   event.preventDefault();
   for (const file of event.dataTransfer.files) {
-    addFile(file.name, new Uint8Array(await file.arrayBuffer()), fileDate(file), 'file dated');
+    addFile(file.name, new Uint8Array(await file.arrayBuffer()), fileDate(file));
   }
 });
 $('pick-files').addEventListener('click', () => $('file-input').click());
 $('file-input').addEventListener('change', async (event) => {
   for (const file of event.target.files) {
-    addFile(file.name, new Uint8Array(await file.arrayBuffer()), fileDate(file), 'file dated');
+    addFile(file.name, new Uint8Array(await file.arrayBuffer()), fileDate(file));
   }
   event.target.value = '';
 });
@@ -979,8 +987,8 @@ async function useBundled(manifest, repo) {
   });
   // offer() clears the log and writes the image's own details, so the release
   // it came from is logged after rather than before - it would be wiped.
-  offer(manifest.file, bytes, manifest.published, `${manifest.tag} released`);
-  log('firmware-log', `deployed with this page from ${repo}`);
+  offer(manifest.file, bytes, manifest.published);
+  log('firmware-log', `${manifest.tag}, deployed with this page from ${repo}`);
 
   // The deployed copy is as new as the last time this site was built, and
   // someone about to flash should know if the firmware has moved on since.
@@ -1000,8 +1008,8 @@ async function useBundled(manifest, repo) {
   }
 }
 
-function offer(name, bytes, dated = null, datedFrom = null) {
-  const file = addFile(name, bytes, dated, datedFrom);
+function offer(name, bytes, dated = null) {
+  const file = addFile(name, bytes, dated);
   if (!file || file.kind !== library.KIND_FIRMWARE) {
     log('firmware-log', `${name} is not a bootloader image — refusing to offer it`, true);
     return;
