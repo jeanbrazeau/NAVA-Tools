@@ -387,3 +387,51 @@ test('editing a repeated column changes the step it is repeating', () => {
     );
   }
 });
+
+/* SHUFFLE and FLAM back the two dials in the readouts under the chart - see
+ * grid.js. One byte each, and the same verbatim-record rule as everything else
+ * here: turning one must not disturb the other, or length, or scale. */
+
+test('setShuffle and setFlamDepth each write exactly one byte', () => {
+  const payload = scratchRecord();
+
+  let before = payload.slice();
+  assert.equal(edit.setShuffle(payload, 5), 5);
+  assert.equal(records.decodePattern(payload).shuffle, 5);
+  assert.deepEqual(changed(before, payload), [records.OFF_SETUP + 2]);
+
+  before = payload.slice();
+  assert.equal(edit.setFlamDepth(payload, 3), 3);
+  assert.equal(records.decodePattern(payload).flam, 3);
+  assert.deepEqual(changed(before, payload), [records.OFF_SETUP + 3]);
+
+  // Neither moved the other, nor length or scale sitting right beside them.
+  const decoded = records.decodePattern(payload);
+  assert.equal(decoded.shuffle, 5);
+  assert.equal(decoded.flam, 3);
+  assert.equal(decoded.steps, 16);
+  assert.equal(decoded.scaleName, '1/16');
+});
+
+test('both dials clamp to their eight positions', () => {
+  const payload = scratchRecord();
+  const dials = [
+    [edit.setShuffle, records.OFF_SETUP + 2],
+    [edit.setFlamDepth, records.OFF_SETUP + 3],
+  ];
+
+  for (const [set, offset] of dials) {
+    assert.equal(set(payload, 0), 0);
+    assert.equal(payload[offset], 0);
+    assert.equal(set(payload, -1), 0);
+    assert.equal(payload[offset], 0);
+
+    const last = edit.NBR_DIAL - 1;
+    assert.equal(set(payload, last), last);
+    assert.equal(payload[offset], last);
+    // Past the last detent there is no circle to fill, so the write clamps
+    // rather than storing a position the readout cannot draw.
+    assert.equal(set(payload, 99), last);
+    assert.equal(payload[offset], last);
+  }
+});

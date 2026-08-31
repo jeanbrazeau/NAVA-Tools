@@ -87,7 +87,19 @@ LAST STEP readout stays, because a drag is not pixel-precise and the number is
 where you confirm what you landed on. The grid reshapes under the pointer —
 columns past the end are struck through and stop being editable, and the ext
 wrap markers move too, since a record whose own ext-length byte is 0 takes its
-ext loop length from the pattern length.
+ext loop length from the pattern length. The LAST STEP readout sits last in the
+row under the grid, hard right: it reports the handle, and the handle is at the
+right-hand end of the same rectangle.
+
+**SHUFFLE and FLAM** are eight indicator circles apiece rather than a number,
+and clicking one turns that dial to it. They are detents on a rotary, not
+quantities — nothing scales them and no other field reads them — so "5" says
+nothing about how far round that is where eight circles with one filled says it
+at a glance. Clicking the filled circle writes nothing, rather than pushing an
+undo entry that undoes to itself. A byte past the eighth position can only come
+from a record the machine never wrote, and a blank 0xFF slot decodes that way:
+it fills no circle and prints the raw number, instead of quietly showing
+position 0.
 
 **↶ and ↷** in the corner of the Detail pane undo and redo, as do <kbd>Cmd</kbd>
 or <kbd>Ctrl</kbd> + <kbd>Z</kbd> and <kbd>Shift</kbd> + that. One entry per

@@ -129,8 +129,35 @@ export function patternChart(pattern, {
   let numCells;
   let stroke = null;       // a cell-painting gesture in progress
   let lengthDrag = null;   // a LAST STEP drag in progress
+  let readoutBar = null;   // the readouts under the grid, replaced in place
 
   const key = (kind, index) => `${kind}:${index}`;
+
+  /** Turn a SHUFFLE or FLAM dial to a position.
+   *
+   *  One click is one whole edit - there is no drag to accumulate, so unlike a
+   *  stroke this snapshots and reports in the same breath. Clicking the lit
+   *  lamp writes nothing: it would push an undo entry that undoes to itself
+   *  and mark a clean file unsaved. */
+  const turnDial = (field, value) => {
+    if ((field === 'shuffle' ? current.shuffle : current.flam) === value) return;
+    const before = payload.slice();
+    if (field === 'shuffle') edit.setShuffle(payload, value);
+    else edit.setFlamDepth(payload, value);
+    current = decodePattern(payload);
+    drawReadouts();
+    onEdit?.(before);
+  };
+
+  /* Rebuilt on its own rather than through draw(): neither dial changes a
+     single cell, and throwing away sixteen lanes to relight one lamp would
+     also drop the focus the click just put on it. */
+  const drawReadouts = () => {
+    const next = readouts(current, payload ? turnDial : null);
+    if (readoutBar) readoutBar.replaceWith(next);
+    else body.appendChild(next);
+    readoutBar = next;
+  };
 
   /* Steps past the pattern's length are printed but struck out: the chart is
      always 16 wide, and a 12-step pattern has to look like a 12-step pattern
@@ -348,7 +375,8 @@ export function patternChart(pattern, {
     // than folded into it: the playhead answers "where does it loop" at a
     // glance across the whole grid, but a drag is not pixel-precise, and the
     // readout is where a glance confirms the exact number landed on.
-    body.appendChild(readouts(current));
+    readoutBar = null;
+    drawReadouts();
 
     if (payload) {
       root.classList.add('editable');
@@ -539,23 +567,67 @@ export function patternChart(pattern, {
   return root;
 }
 
-/** The boxes under the grid, where the panel prints TRACK and MODE. */
-function readouts(pattern) {
-  const wrap = el('div', 'chart-readouts');
-  const pairs = [
-    ['LAST STEP', String(pattern.steps)],
-    ['SCALE', pattern.scaleName],
-    ['SHUFFLE', String(pattern.shuffle)],
-    ['FLAM', String(pattern.flam)],
-  ];
-  if (pattern.extLength !== pattern.length) pairs.push(['EXT STEPS', String(pattern.extSteps)]);
-  if (pattern.groupLength) {
-    pairs.push(['GROUP', `${pattern.groupPos + 1}/${pattern.groupLength}`]);
+/** One of the machine's two eight-position controls, as the row of indicator
+ *  circles the panel carries rather than as a number.
+ *
+ *  A number is the wrong shape for what these are. SHUFFLE and FLAM are
+ *  detents on a rotary, not quantities - nothing scales them and nothing else
+ *  in the record reads them - and "5" says nothing about how far round that
+ *  is. Eight circles with one filled says it at a glance, and it gives the
+ *  edit somewhere to land: clicking a circle is turning the knob to it.
+ *
+ *  `onPick` absent means a read-only chart, and the circles are spans rather
+ *  than buttons that do nothing. A value past the last position can only come
+ *  from a record the machine never wrote - a blank 0xFF slot decodes that way
+ *  - so it fills nothing and prints the raw byte beside the row instead of
+ *  quietly showing position 0. */
+function dial(value, name, onPick) {
+  const wrap = el('div', 'dial');
+  wrap.setAttribute('role', onPick ? 'radiogroup' : 'img');
+  wrap.setAttribute('aria-label', `${name} ${value}`);
+  for (let i = 0; i < edit.NBR_DIAL; i += 1) {
+    const lamp = el(onPick ? 'button' : 'span', 'lamp');
+    if (i === value) lamp.classList.add('on');
+    if (onPick) {
+      lamp.type = 'button';
+      lamp.setAttribute('role', 'radio');
+      lamp.setAttribute('aria-checked', String(i === value));
+      lamp.setAttribute('aria-label', `${name} ${i}`);
+      lamp.title = `${name} ${i}`;
+      lamp.addEventListener('click', () => onPick(i));
+    }
+    wrap.appendChild(lamp);
   }
-  for (const [label, value] of pairs) {
-    const box = el('div', 'readout');
+  if (!(value >= 0 && value < edit.NBR_DIAL)) wrap.appendChild(el('span', 'dial-odd', String(value)));
+  return wrap;
+}
+
+/** The boxes under the grid, where the panel prints TRACK and MODE.
+ *
+ *  LAST STEP is last and hard right, opposite the handle it reports: the
+ *  playhead sits at the top of the grid on the column the pattern loops at,
+ *  and the readout that confirms the exact number belongs at the far end of
+ *  the same edge rather than at the head of the row where it reads as the
+ *  first of four equal facts.
+ *
+ *  `onSet(field, value)` makes the two dials editable; without it every box is
+ *  text, which is what a read-only chart wants. */
+function readouts(pattern, onSet = null) {
+  const wrap = el('div', 'chart-readouts');
+  const boxes = [
+    ['SCALE', pattern.scaleName],
+    ['SHUFFLE', dial(pattern.shuffle, 'SHUFFLE', onSet && ((v) => onSet('shuffle', v)))],
+    ['FLAM', dial(pattern.flam, 'FLAM', onSet && ((v) => onSet('flam', v)))],
+  ];
+  if (pattern.extLength !== pattern.length) boxes.push(['EXT STEPS', String(pattern.extSteps)]);
+  if (pattern.groupLength) {
+    boxes.push(['GROUP', `${pattern.groupPos + 1}/${pattern.groupLength}`]);
+  }
+  boxes.push(['LAST STEP', String(pattern.steps), 'readout readout-last']);
+  for (const [label, value, className] of boxes) {
+    const box = el('div', className ?? 'readout');
     box.appendChild(el('span', 'readout-label', label));
-    box.appendChild(el('span', 'readout-value', value));
+    box.appendChild(typeof value === 'string' ? el('span', 'readout-value', value) : value);
     wrap.appendChild(box);
   }
   return wrap;
@@ -564,5 +636,5 @@ function readouts(pattern) {
 export function chartLegend(editable = false) {
   const marks = 'loud  ■    soft  ▒    flam  ◤    beyond last step  ╱';
   if (!editable) return marks;
-  return `${marks}\nclick cycles a step  ·  drag along a lane to lay down a run  ·  shift for flam  ·  drag LAST STEP to change the pattern's length`;
+  return `${marks}\nclick cycles a step  ·  drag along a lane to lay down a run  ·  shift for flam  ·  drag LAST STEP to change the pattern's length  ·  click a SHUFFLE or FLAM circle to turn that dial`;
 }
