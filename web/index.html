@@ -97,8 +97,6 @@
         <ul id="files" class="listbox"></ul>
         <div class="buttons">
           <button id="save-file" class="btn"><u>S</u>ave…</button>
-          <button id="undo-edit" class="btn" disabled><u>U</u>ndo</button>
-          <button id="redo-edit" class="btn" disabled><u>R</u>edo</button>
         </div>
       </fieldset>
       <fieldset class="group col-items">
@@ -107,6 +105,18 @@
       </fieldset>
       <fieldset class="group col-detail">
         <legend>Detail</legend>
+        <!-- The filename/item and undo/redo share one line so undo/redo survive
+             a chart rebuild - app.js sets #detail-title for both the chart and
+             the text views; grid.js no longer draws its own title. -->
+        <div id="detail-head" class="detail-head">
+          <span id="detail-title" class="detail-title"></span>
+          <div class="detail-actions">
+            <!-- Undo/redo glyphs: U+21B6 / U+21B7 - swap both here if the
+                 direction ever reads wrong. -->
+            <button id="undo-edit" class="btn icon" disabled title="Undo" aria-label="Undo">↶</button>
+            <button id="redo-edit" class="btn icon" disabled title="Redo" aria-label="Redo">↷</button>
+          </div>
+        </div>
         <div id="chart" hidden></div>
         <pre id="detail" class="paper">Load a .syx to see what is in it.</pre>
         <p id="legend" class="muted"></p>

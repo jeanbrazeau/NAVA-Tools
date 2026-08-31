@@ -61,18 +61,32 @@ const el = (tag, className, text) => {
 /** The chart for one pattern: INST./EXT views over one 16-column grid, plus the
  *  step strip that shows whichever lane is picked.
  *
- * Pass `payload` - the record's raw bytes - to make the cells editable. Each
- * click writes into those bytes and the chart is redrawn from what they now
- * say, rather than from what the click was supposed to do: if an edit and the
- * decoder ever disagreed, the grid would show the disagreement instead of
- * hiding it. `onEdit` fires once per gesture, with the record's bytes as they
- * stood before it, so the caller can mark the file unsaved and push the
- * gesture onto an undo stack. */
-export function patternChart(pattern, { config = null, title = '', payload = null, onEdit = null } = {}) {
+ * Pass `payload` - the record's raw bytes - to make the cells editable and to
+ * turn on the LAST STEP playhead (see below). Each edit writes into those
+ * bytes and the chart is redrawn from what they now say, rather than from
+ * what the gesture was supposed to do: if an edit and the decoder ever
+ * disagreed, the grid would show the disagreement instead of hiding it.
+ * `onEdit` fires once per gesture, with the record's bytes as they stood
+ * before it, so the caller can mark the file unsaved and push the gesture
+ * onto an undo stack.
+ *
+ * `view` and `lane` seed which tab and which row are selected, and
+ * `onViewChange(view, lane)` fires whenever that changes. Neither is needed to
+ * survive a length drag - that redraws itself in place - but a caller that
+ * rebuilds this chart from scratch (app.js does, after an undo) needs them to
+ * avoid resetting to the INST. tab and BASS DRUM every time.
+ *
+ * There is no title here - app.js owns #detail-title, which sits above both
+ * this chart and the plain-text detail view and carries undo/redo, so it has
+ * to survive this chart being rebuilt rather than living inside it. */
+export function patternChart(pattern, {
+  config = null, payload = null, onEdit = null,
+  view: initialView = null, lane: initialLane = null, onViewChange = null,
+} = {}) {
   const root = el('div', 'chart');
-  if (title) root.appendChild(el('div', 'chart-title', title));
 
-  const steps = pattern.steps;
+  // Static for the life of the chart: which ext tracks are used does not
+  // change with the pattern's length, so the tab needs no part in a rebuild.
   const extCount = pattern.activeExtTracks().length;
 
   const tabs = el('div', 'chart-tabs');
@@ -85,20 +99,46 @@ export function patternChart(pattern, { config = null, title = '', payload = nul
   tabs.append(instTab, extTab);
   root.appendChild(tabs);
 
-  const table = el('table', 'chart-grid');
-  const head = el('tr');
-  head.appendChild(el('th', 'chart-corner', 'STEP'));
-  for (let i = 0; i < NBR_STEP; i += 1) {
-    const cell = el('th', 'chart-num', String(i + 1));
-    if (i % 4 === 0) cell.classList.add('beat');
-    if (i >= steps) cell.classList.add('past');
-    head.appendChild(cell);
-  }
-  const thead = el('thead');
-  thead.appendChild(head);
-  table.appendChild(thead);
+  // Everything below is rebuilt whole by draw(), not patched cell by cell.
+  // A length change moves which columns are struck through as "past the end"
+  // across every lane at once, and - when the ext loop has no length of its
+  // own; see extLength in records.js - can move the ext wrap markers with it.
+  // Patching that in place would mean re-deriving the same "what changed"
+  // logic draw() already has to have anyway.
+  const body = el('div', 'chart-body');
+  root.appendChild(body);
 
-  const rows = new Map();
+  // `current` is re-read from the record after every edit, so everything
+  // below draws from the bytes as they now are rather than from what a click
+  // or drag was supposed to do.
+  let current = pattern;
+
+  // One remembered lane per view, so switching tabs and back returns to what
+  // was being looked at rather than resetting to the top.
+  const active = pattern.activeVoices();
+  const chosen = {
+    inst: active.includes(8) ? 8 : (active[0] ?? 8),
+    ext: pattern.activeExtTracks()[0] ?? 0,
+  };
+  let view = initialView === 'ext' ? 'ext' : 'inst';
+  if (initialLane !== null && initialLane !== undefined && (initialView === 'inst' || initialView === 'ext')) {
+    chosen[initialView] = initialLane;
+  }
+
+  // Reassigned by draw() on every rebuild; the closures below read the latest
+  // value rather than the one that was current when they were defined.
+  let steps = current.steps;
+  let table;
+  let instBody;
+  let extBody;
+  let rows;
+  let cells;
+  let owners;
+  let strip;
+  let numCells;
+  let stroke = null;       // a cell-painting gesture in progress
+  let lengthDrag = null;   // a LAST STEP drag in progress
+
   const key = (kind, index) => `${kind}:${index}`;
 
   /* Steps past the pattern's length are printed but struck out: the chart is
@@ -116,17 +156,16 @@ export function patternChart(pattern, { config = null, title = '', payload = nul
 
   const cellFor = (i, state, flam = false) => {
     const cell = el('td', 'cell');
+    cell.dataset.col = String(i);   // read back by the LAST STEP drag's hit test
     if (i % 4 === 0) cell.classList.add('beat');
     paintCell(cell, i, state, flam);
     return cell;
   };
 
-  const cells = new Map();   // lane key -> its 16 <td>s, for repainting after an edit
-
-  const addLane = (body, id, label, className, title, fill) => {
+  const addLane = (tbody, id, label, className, laneTitle, fill) => {
     const row = el('tr', className);
     row.tabIndex = 0;
-    if (title) row.title = title;
+    if (laneTitle) row.title = laneTitle;
     row.appendChild(el('th', 'chart-label', label));
     const own = [];
     for (let i = 0; i < NBR_STEP; i += 1) {
@@ -136,83 +175,30 @@ export function patternChart(pattern, { config = null, title = '', payload = nul
     }
     rows.set(id, row);
     cells.set(id, own);
-    body.appendChild(row);
+    tbody.appendChild(row);
     return row;
   };
 
-  const instBody = el('tbody');
-  for (const [instrument, label] of CHART_ROWS) {
-    addLane(
-      instBody, key('inst', instrument), label, 'chart-row',
-      `${label} (${INSTRUMENT_NAMES[instrument]})`,
-      (i) => {
-        const step = i < steps ? pattern.step(instrument, i) : null;
-        return cellFor(i, step && step.on ? pattern.level(instrument, i) : 'off', step?.flam && step.on);
-      },
-    );
-  }
-
-  // TRIG and ACCENT are the two lanes that are not voices: one pulses the
-  // trigger output, the other accents whatever the voices are doing. They are
-  // programmed per step like everything else, so they belong on the chart -
-  // below the kit, marked as not being part of it.
-  addLane(
-    instBody, key('inst', TRIG), 'TRIG', 'chart-row chart-utility',
-    `TRIG output (${INSTRUMENT_NAMES[TRIG]})`,
-    (i) => {
-      const step = i < steps ? pattern.step(TRIG, i) : null;
-      return cellFor(i, step && step.on ? pattern.level(TRIG, i) : 'off');
-    },
-  );
-  addLane(
-    instBody, key('acc', TOTAL_ACC), 'ACCENT', 'chart-row chart-utility',
-    'total accent - accents every voice on that step',
-    (i) => cellFor(i, (pattern.inst[TOTAL_ACC] >> i) & 1 ? 'accent' : 'off'),
-  );
-
-  // All sixteen ext lanes, not just the used ones, for the same reason the
-  // voices are all present: T7 should be in the same place in every pattern.
-  const extBody = el('tbody');
-  for (let track = 0; track < NBR_EXT_TRACK; track += 1) {
-    const note = config ? noteName(config.extNotes[track]) : null;
-    addLane(
-      extBody, key('ext', track), `T${track + 1}${note ? `  ${note}` : ''}`, 'chart-row chart-ext',
-      note ? `ext track ${track + 1}, note ${note}` : `ext track ${track + 1}`,
-      // The ext layer wraps on its own length, so a shorter ext loop repeats
-      // against the kit rather than leaving the tail blank.
-      (i) => {
-        const cell = cellFor(i, i < steps ? pattern.extStep(track, i % pattern.extSteps) : 'off');
-        // A dashed rule where the loop starts over. Without it, editing one
-        // column and watching three change looks like a fault rather than the
-        // repeat it is.
-        if (i > 0 && i < steps && i % pattern.extSteps === 0) cell.classList.add('wrap');
-        return cell;
-      },
-    );
-  }
-
-  table.append(instBody, extBody);
-  root.appendChild(table);
-  const readoutBox = readouts(pattern);
-  root.appendChild(readoutBox);
-
-  const strip = el('div', 'step-strip');
-  root.appendChild(strip);
-
-  // `pattern` is re-read from the record after every edit, so everything below
-  // draws from the bytes as they now are rather than from what a click was
-  // supposed to do. If an edit and the decoder ever disagreed, the grid would
-  // show the disagreement instead of hiding it.
-  let current = pattern;
-
-  // One remembered lane per view, so switching tabs and back returns to what
-  // was being looked at rather than resetting to the top.
-  const active = pattern.activeVoices();
-  const chosen = {
-    inst: active.includes(8) ? 8 : (active[0] ?? 8),
-    ext: pattern.activeExtTracks()[0] ?? 0,
+  /** Redraw one lane from the record, after an ordinary step/accent/flam edit.
+   *  That kind of edit never moves which columns are past the end - only a
+   *  length change does that, and it goes through draw() instead of here. */
+  const repaint = (kind, index) => {
+    const own = cells.get(key(kind, index));
+    for (let i = 0; i < NBR_STEP; i += 1) {
+      if (kind === 'ext') {
+        paintCell(own[i], i, i < steps ? current.extStep(index, i % current.extSteps) : 'off');
+      } else if (kind === 'acc') {
+        paintCell(own[i], i, (current.inst[TOTAL_ACC] >> i) & 1 ? 'accent' : 'off');
+      } else {
+        const step = i < steps ? current.step(index, i) : null;
+        paintCell(
+          own[i], i,
+          step && step.on ? current.level(index, i) : 'off',
+          Boolean(step?.flam && step.on),
+        );
+      }
+    }
   };
-  let view = 'inst';
 
   const paint = () => {
     instTab.setAttribute('aria-selected', String(view === 'inst'));
@@ -232,43 +218,180 @@ export function patternChart(pattern, { config = null, title = '', payload = nul
     view = kind;
     chosen[kind] = index;
     paint();
+    onViewChange?.(view, chosen[view]);
   };
 
-  /** Redraw one lane from the record, after that record has changed. */
-  const repaint = (kind, index) => {
-    const own = cells.get(key(kind, index));
+  /** Which length a drag position corresponds to: the column boundary nearest
+   *  the pointer, clamped to 1..16.
+   *
+   *  elementFromPoint first, same reason as the cell-paint drag below - a
+   *  touch pointer is captured by the element it went down on and never fires
+   *  pointerenter anywhere else, so the element actually under the point has
+   *  to be looked up explicitly. The header row's own cells are the fallback,
+   *  for wherever that lands outside a numbered column: the label cells, the
+   *  playhead's own handle, or off the grid altogether. */
+  const stepAt = (clientX, clientY) => {
+    const hit = document.elementFromPoint(clientX, clientY)?.closest?.('[data-col]');
+    if (hit && table.contains(hit)) {
+      const col = Number(hit.dataset.col);
+      const r = hit.getBoundingClientRect();
+      return Math.max(1, Math.min(NBR_STEP, clientX < r.left + r.width / 2 ? col : col + 1));
+    }
+    const first = numCells[0].getBoundingClientRect();
+    const last = numCells[NBR_STEP - 1].getBoundingClientRect();
+    if (clientX < first.left + first.width / 2) return 1;
+    if (clientX > last.right - last.width / 2) return NBR_STEP;
+    return current.steps;
+  };
+
+  /** Build the table, the LAST STEP playhead, the readouts and the step strip
+   *  from `current`, replacing whatever draw() built last time. Called once at
+   *  the start and again after any edit that changes `steps` - the only kind
+   *  that moves which columns are struck through. */
+  const draw = () => {
+    steps = current.steps;
+    body.replaceChildren();
+
+    table = el('table', 'chart-grid');
+    const head = el('tr');
+    head.appendChild(el('th', 'chart-corner', 'STEP'));
+    numCells = [];
     for (let i = 0; i < NBR_STEP; i += 1) {
-      if (kind === 'ext') {
-        paintCell(own[i], i, i < steps ? current.extStep(index, i % current.extSteps) : 'off');
-      } else if (kind === 'acc') {
-        paintCell(own[i], i, (current.inst[TOTAL_ACC] >> i) & 1 ? 'accent' : 'off');
-      } else {
-        const step = i < steps ? current.step(index, i) : null;
-        paintCell(
-          own[i], i,
-          step && step.on ? current.level(index, i) : 'off',
-          Boolean(step?.flam && step.on),
-        );
+      const cell = el('th', 'chart-num', String(i + 1));
+      cell.dataset.col = String(i);
+      if (i % 4 === 0) cell.classList.add('beat');
+      if (i >= steps) cell.classList.add('past');
+      head.appendChild(cell);
+      numCells.push(cell);
+    }
+    const thead = el('thead');
+    thead.appendChild(head);
+    table.appendChild(thead);
+
+    rows = new Map();
+    cells = new Map();
+
+    instBody = el('tbody');
+    for (const [instrument, label] of CHART_ROWS) {
+      addLane(
+        instBody, key('inst', instrument), label, 'chart-row',
+        `${label} (${INSTRUMENT_NAMES[instrument]})`,
+        (i) => {
+          const step = i < steps ? current.step(instrument, i) : null;
+          return cellFor(i, step && step.on ? current.level(instrument, i) : 'off', step?.flam && step.on);
+        },
+      );
+    }
+
+    // TRIG and ACCENT are the two lanes that are not voices: one pulses the
+    // trigger output, the other accents whatever the voices are doing. They
+    // are programmed per step like everything else, so they belong on the
+    // chart - below the kit, marked as not being part of it.
+    addLane(
+      instBody, key('inst', TRIG), 'TRIG', 'chart-row chart-utility',
+      `TRIG output (${INSTRUMENT_NAMES[TRIG]})`,
+      (i) => {
+        const step = i < steps ? current.step(TRIG, i) : null;
+        return cellFor(i, step && step.on ? current.level(TRIG, i) : 'off');
+      },
+    );
+    addLane(
+      instBody, key('acc', TOTAL_ACC), 'ACCENT', 'chart-row chart-utility',
+      'total accent - accents every voice on that step',
+      (i) => cellFor(i, (current.inst[TOTAL_ACC] >> i) & 1 ? 'accent' : 'off'),
+    );
+
+    // All sixteen ext lanes, not just the used ones, for the same reason the
+    // voices are all present: T7 should be in the same place in every pattern.
+    extBody = el('tbody');
+    for (let track = 0; track < NBR_EXT_TRACK; track += 1) {
+      const note = config ? noteName(config.extNotes[track]) : null;
+      addLane(
+        extBody, key('ext', track), `T${track + 1}${note ? `  ${note}` : ''}`, 'chart-row chart-ext',
+        note ? `ext track ${track + 1}, note ${note}` : `ext track ${track + 1}`,
+        // The ext layer wraps on its own length, so a shorter ext loop repeats
+        // against the kit rather than leaving the tail blank.
+        (i) => {
+          const cell = cellFor(i, i < steps ? current.extStep(track, i % current.extSteps) : 'off');
+          // A dashed rule where the loop starts over. Without it, editing one
+          // column and watching three change looks like a fault rather than
+          // the repeat it is.
+          if (i > 0 && i < steps && i % current.extSteps === 0) cell.classList.add('wrap');
+          return cell;
+        },
+      );
+    }
+
+    table.append(instBody, extBody);
+
+    // The LAST STEP playhead: a hard rule the full height of whichever view is
+    // showing, at the same column math table-layout: fixed already uses for
+    // the grid itself (the corner's own width via --corner, then the rest
+    // split sixteen ways) - not measured from the table, because on the very
+    // first draw() this chart is not in the document yet and would measure as
+    // nothing.
+    const gridWrap = el('div', 'chart-grid-wrap');
+    gridWrap.appendChild(table);
+    const boundary = `calc(var(--corner) + (100% - var(--corner)) * ${steps} / 16)`;
+    const playhead = el('div', 'playhead');
+    playhead.style.left = boundary;
+    gridWrap.appendChild(playhead);
+    if (payload) {
+      // The draggable affordance. Only present when the chart is editable -
+      // there is nothing to drag to on a read-only chart.
+      const handle = el('div', 'playhead-handle');
+      handle.style.left = boundary;
+      handle.style.touchAction = 'none';   // a drag here changes length, not scroll
+      handle.title = `LAST STEP ${steps} — drag to change the pattern's length`;
+      gridWrap.appendChild(handle);
+    }
+    body.appendChild(gridWrap);
+
+    // LAST STEP stays as its own readout too, alongside the playhead rather
+    // than folded into it: the playhead answers "where does it loop" at a
+    // glance across the whole grid, but a drag is not pixel-precise, and the
+    // readout is where a glance confirms the exact number landed on.
+    body.appendChild(readouts(current));
+
+    strip = el('div', 'step-strip');
+    body.appendChild(strip);
+
+    if (payload) {
+      root.classList.add('editable');
+      owners = new Map();   // cell element -> which lane and step it is
+      for (const [id, own] of cells) {
+        const [kind, raw] = id.split(':');
+        const index = Number(raw);
+        own.forEach((cell, i) => {
+          // Past the last step there is nothing to edit: the machine will
+          // never play it, so a click there would write a step that does not
+          // exist.
+          if (i >= steps) return;
+          cell.classList.add('editable');
+          cell.style.touchAction = 'none';   // a drag here is painting, not scrolling
+          owners.set(cell, { lane: id, kind, index, step: i });
+        });
       }
     }
-  };
 
-  if (payload) {
-    root.classList.add('editable');
-    const owners = new Map();   // cell element -> which lane and step it is
-    for (const [id, own] of cells) {
-      const [kind, raw] = id.split(':');
-      const index = Number(raw);
-      own.forEach((cell, i) => {
-        // Past the last step there is nothing to edit: the machine will never
-        // play it, so a click there would write a step that does not exist.
-        if (i >= steps) return;
-        cell.classList.add('editable');
-        cell.style.touchAction = 'none';   // a drag here is painting, not scrolling
-        owners.set(cell, { lane: id, kind, index, step: i });
+    for (const [id, row] of rows) {
+      const [kind, index] = id.split(':');
+      const number = Number(index);
+      row.addEventListener('click', () => pick(kind, number));
+      row.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          pick(kind, number);
+        }
       });
     }
 
+    paint();
+  };
+
+  draw();
+
+  if (payload) {
     /* Click and drag lays one value across a run of steps.
      *
      * The cell the gesture starts on decides that value - it cycles, as a
@@ -280,8 +403,6 @@ export function patternChart(pattern, { config = null, title = '', payload = nul
      * The drag is confined to the lane it began in. Smearing across lanes is
      * never what was meant, and on a grid this dense it would be easy to do by
      * accident. */
-    let stroke = null;
-
     const paintStep = (step) => {
       if (!stroke || stroke.done.has(step)) return;
       stroke.done.add(step);
@@ -301,7 +422,7 @@ export function patternChart(pattern, { config = null, title = '', payload = nul
       if (at && at.lane === stroke.lane) paintStep(at.step);
     };
 
-    const begin = (event) => {
+    const beginStroke = (event) => {
       if (event.button !== undefined && event.button !== 0) return;
       const at = owners.get(event.target.closest?.('td.cell'));
       if (!at) return;
@@ -316,10 +437,10 @@ export function patternChart(pattern, { config = null, title = '', payload = nul
       } else if (kind === 'ext') {
         // A column past the end of the ext loop is a repeat of a step inside
         // it, so it edits that step - the same one the column is drawing.
-        const wrap = (column) => edit.extStepIndex(column, current.extSteps);
-        const from = edit.extState(payload, index, wrap(step));
+        const wrapAt = (column) => edit.extStepIndex(column, current.extSteps);
+        const from = edit.extState(payload, index, wrapAt(step));
         const wanted = from === 'off' ? 'normal' : from === 'normal' ? 'accent' : 'off';
-        write = (s) => edit.setExtStep(payload, index, wrap(s), wanted);
+        write = (s) => edit.setExtStep(payload, index, wrapAt(s), wanted);
       } else if (kind === 'acc') {
         const wanted = edit.accentState(payload, step) === 'off' ? 'accent' : 'off';
         write = (s) => edit.setAccent(payload, s, wanted);
@@ -342,48 +463,77 @@ export function patternChart(pattern, { config = null, title = '', payload = nul
       // different pattern is selected, so listeners left on the document would
       // accumulate one set per pattern ever looked at.
       document.addEventListener('pointermove', extend);
-      document.addEventListener('pointerup', end);
-      document.addEventListener('pointercancel', end);
+      document.addEventListener('pointerup', endStroke);
+      document.addEventListener('pointercancel', endStroke);
     };
 
-    function end() {
+    function endStroke() {
       if (!stroke) return;
       const { changed, before } = stroke;
       stroke = null;
       root.classList.remove('painting');
       document.removeEventListener('pointermove', extend);
-      document.removeEventListener('pointerup', end);
-      document.removeEventListener('pointercancel', end);
+      document.removeEventListener('pointerup', endStroke);
+      document.removeEventListener('pointercancel', endStroke);
       // Once per gesture, not once per cell: a sixteen-step drag should mark
       // the file unsaved once, not rebuild the file list sixteen times - and
       // should undo as the one action it looked like, not sixteen of them.
       if (changed && onEdit) onEdit(before);
     }
 
-    root.addEventListener('pointerdown', begin);
+    /* Dragging the LAST STEP playhead: the same one-entry-per-gesture shape as
+     * a cell-painting stroke, but it owns its own pointer lifecycle rather
+     * than sharing `stroke` - the two gestures start on different elements and
+     * never overlap, and keeping them apart means neither has to know the
+     * other exists. Every step the pointer crosses redraws the whole grid
+     * (draw(), not repaint()): which columns are struck through as past the
+     * end changes on every lane at once, and the ext wrap markers can move
+     * with it. */
+    const moveLength = (event) => {
+      if (!lengthDrag) return;
+      const wanted = stepAt(event.clientX, event.clientY);
+      if (wanted === current.steps) return;
+      edit.setLength(payload, wanted);
+      current = decodePattern(payload);
+      lengthDrag.changed = true;
+      draw();
+    };
+
+    const endLength = () => {
+      if (!lengthDrag) return;
+      const { changed, before } = lengthDrag;
+      lengthDrag = null;
+      document.removeEventListener('pointermove', moveLength);
+      document.removeEventListener('pointerup', endLength);
+      document.removeEventListener('pointercancel', endLength);
+      if (changed && onEdit) onEdit(before);
+    };
+
+    const beginLength = (event) => {
+      if (!event.target.closest?.('.playhead-handle')) return;
+      if (event.button !== undefined && event.button !== 0) return;
+      event.preventDefault();
+      lengthDrag = { before: payload.slice(), changed: false };
+      document.addEventListener('pointermove', moveLength);
+      document.addEventListener('pointerup', endLength);
+      document.addEventListener('pointercancel', endLength);
+    };
+
+    root.addEventListener('pointerdown', beginStroke);
+    root.addEventListener('pointerdown', beginLength);
   }
 
-  for (const [id, row] of rows) {
-    const [kind, index] = id.split(':');
-    const number = Number(index);
-    row.addEventListener('click', () => pick(kind, number));
-    row.addEventListener('keydown', (event) => {
-      if (event.key === 'Enter' || event.key === ' ') {
-        event.preventDefault();
-        pick(kind, number);
-      }
-    });
-  }
   instTab.addEventListener('click', () => {
     view = 'inst';
     paint();
+    onViewChange?.(view, chosen.inst);
   });
   extTab.addEventListener('click', () => {
     view = 'ext';
     paint();
+    onViewChange?.(view, chosen.ext);
   });
 
-  paint();
   return root;
 }
 
@@ -458,5 +608,5 @@ function laneName(view, index, config) {
 export function chartLegend(editable = false) {
   const marks = 'loud  ■    soft  ▒    flam  ◤    beyond last step  ╱';
   if (!editable) return marks;
-  return `${marks}\nclick cycles a step  ·  drag along a lane to lay down a run  ·  shift for flam`;
+  return `${marks}\nclick cycles a step  ·  drag along a lane to lay down a run  ·  shift for flam  ·  drag LAST STEP to change the pattern's length`;
 }

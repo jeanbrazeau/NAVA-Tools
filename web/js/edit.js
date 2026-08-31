@@ -171,3 +171,20 @@ export function cycleExtStep(payload, track, step) {
   const next = state === 'off' ? 'normal' : state === 'normal' ? 'accent' : 'off';
   return setExtStep(payload, track, step, next);
 }
+
+/** Set the pattern's length, in steps. Length lives at OFF_SETUP as steps-1,
+ *  so this is the one byte that changes - the rest of the record, including
+ *  storedExtLength right beside it, is left exactly as it was. That matters:
+ *  when storedExtLength is 0 the ext loop's own length follows this one (see
+ *  decodePattern), so a shorter pattern can silently shorten the ext loop too
+ *  without this function having to know that - it only ever writes its own
+ *  byte, and the decoder does the rest.
+ *
+ * Out-of-range requests are clamped rather than refused: a drag that
+ * overshoots the grid should stop at the edge, not leave the length wherever
+ * the gesture started. */
+export function setLength(payload, steps) {
+  const clamped = Math.max(1, Math.min(NBR_STEP, Math.round(steps)));
+  payload[OFF_SETUP] = clamped - 1;
+  return clamped;
+}

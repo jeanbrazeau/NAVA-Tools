@@ -17,6 +17,12 @@
   --face: #cfcfcf;   /* dialog fill */
   --face-dim: #b3b3b3;  /* the unchosen tabs, one step back from the face */
   --shadow: 3px 3px 0 var(--ink);
+  /* The step chart's label column width - read by both .chart-corner (so the
+     grid actually has that column that wide) and the LAST STEP playhead's
+     inline `left` (so it lands on the same column boundaries without
+     measuring the table, which would come back as 0 before the chart is
+     inserted into the page). One number, not two kept in sync by hand. */
+  --corner: 7.4rem;
   --font: ui-monospace, "SF Mono", Menlo, Consolas, "DejaVu Sans Mono", monospace;
   --dither: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='2' height='2' shape-rendering='crispEdges'%3E%3Crect width='1' height='1'/%3E%3Crect x='1' y='1' width='1' height='1'/%3E%3C/svg%3E");
 }
@@ -338,12 +344,42 @@ input[type="checkbox"]:checked::before {
    "this is what Return does". */
 .btn.default { box-shadow: 0 0 0 1px var(--face), 0 0 0 2px var(--ink); margin: 2px; }
 .btn.small { padding: 1px 9px; }
+/* A glyph-only button (undo/redo): square rather than padded to a word's
+   width, and big enough - GEM or not - to stay a comfortable click target. */
+.btn.icon {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  display: grid;
+  place-content: center;
+  font-size: 13px;
+  line-height: 1;
+}
 .btn:disabled { opacity: 0.45; cursor: not-allowed; }
 
 .buttons { display: flex; gap: 10px; margin-top: 10px; }
 
 a { color: var(--ink); }
 u { text-decoration-thickness: 1px; text-underline-offset: 2px; }
+
+/* The Detail pane's own header: the filename (and item, once one is picked)
+   on the left, undo/redo on the right - one line shared by the chart and the
+   plain-text view below it, so the buttons neither vanish for a track/config
+   item nor get rebuilt away every time the chart redraws. */
+.detail-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.detail-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.detail-actions { display: flex; gap: 4px; flex: none; }
 
 /* ---------- paper areas ---------- */
 
@@ -380,7 +416,6 @@ pre.log .bad::before { content: "! "; }
   padding: 8px;
   overflow-x: auto;
 }
-.chart-title { margin-bottom: 8px; padding-left: 2px; }
 
 /* INST. / EXT, the same folder-tab idiom as the window tabs one level up: the
    chosen one takes the colour of the surface it opens onto - here the chart's
@@ -424,7 +459,7 @@ table.chart-grid {
   white-space: nowrap;
 }
 /* Sized to the longest label the chart prints, so the grid gets the rest. */
-.chart-corner { width: 7.4rem; letter-spacing: 0.12em; }
+.chart-corner { width: var(--corner); letter-spacing: 0.12em; }
 .chart-num {
   width: auto;
   text-align: center;
@@ -490,6 +525,46 @@ td.cell.editable.loud:hover { box-shadow: inset 0 0 0 2px var(--paper); }
 /* Mid-drag the pointer is laying down steps, so the browser must not decide it
    is selecting text across the grid instead. */
 .chart.painting { user-select: none; }
+
+/* The LAST STEP playhead: where the pattern loops. `left` is set inline in
+   grid.js from the same --corner-based column math table-layout: fixed uses
+   for the grid itself, so the rule and the handle land on the actual column
+   boundary without measuring the table.
+
+   Solid and full height, on purpose against the two dashed/thin rules it
+   shares the grid with: the ext wrap (td.cell.wrap) is dashed because it is
+   not a boundary - the steps past it are the same steps repeating - and the
+   beat rule is a plain cell border that never leaves the grid. The playhead is
+   the one rule that means "the pattern stops here", so it is the heaviest
+   mark on the chart and the only one that reaches past the grid's own edge. */
+.chart-grid-wrap { position: relative; }
+.playhead {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 0;
+  margin-left: -1px;   /* centres the 2px rule on the boundary, not beside it */
+  border-left: 2px solid var(--ink);
+  pointer-events: none;
+}
+/* The grip: a filled diamond straddling the top of the grid, the same shape
+   the GEM radio buttons use for "this one is live" - here it says "this is
+   what moves". */
+.playhead-handle {
+  position: absolute;
+  top: 0;
+  width: 11px;
+  height: 11px;
+  margin: -6px 0 0 -6px;   /* centred on the boundary, half above the grid */
+  background: var(--ink);
+  border: 1px solid var(--paper);
+  transform: rotate(45deg);
+  cursor: ew-resize;
+  z-index: 1;
+}
+.playhead-handle:hover, .playhead-handle:active {
+  box-shadow: 0 0 0 1px var(--ink);
+}
 
 .chart-readouts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
 .readout {

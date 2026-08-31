@@ -57,6 +57,14 @@ const history = new History();
 // that state without having to remember every edit that happened in between.
 const loadedSnapshots = new WeakMap();
 
+// Which tab and which lane the chart was showing, so rebuilding it - which
+// undo does, via refreshItems() - reopens on the same view instead of
+// resetting to INST./BASS DRUM. Keyed by item rather than kept as one value,
+// so switching to a different pattern and back does not carry the wrong
+// pattern's selection with it; switching items on purpose is exactly the case
+// that should NOT preserve the old view.
+const chartViews = new WeakMap();
+
 /* ---------- small helpers ---------- */
 
 function status(text) {
@@ -378,7 +386,7 @@ function refreshItems() {
     item.className = 'empty';
     item.textContent = file.kind === library.KIND_FIRMWARE ? 'firmware image' : 'unrecognised';
     list.appendChild(item);
-    showDetail(describeFile(file));
+    showDetail(describeFile(file), detailTitle(file));
     return;
   }
 
@@ -405,29 +413,43 @@ function refreshItems() {
     showChart(file, chosen);
   } else {
     $('legend').textContent = '';
-    showDetail(chosen ? describeItem(file, chosen) : describeFile(file));
+    showDetail(chosen ? describeItem(file, chosen) : describeFile(file), detailTitle(file, chosen));
   }
 }
 
+/** What #detail-title reads: the file alone, or the file and the item once one
+ *  is picked. Shared by the chart and the plain-text views so the header reads
+ *  the same regardless of which one is showing. */
+function detailTitle(file, item = null) {
+  if (!file) return '';
+  return item ? `${file.name}  ›  ${item.label}` : file.name;
+}
+
 /* A pattern gets the machine's step chart; everything else is text. The two
- * views swap rather than stack, so the pane is never both. */
+ * views swap rather than stack, so the pane is never both - but the header
+ * above them (#detail-title, undo, redo) is neither's own, so it is set here
+ * rather than by grid.js, and survives a chart rebuild untouched. */
 function showChart(file, item) {
   let pattern;
   try {
     pattern = item.decoded();
   } catch (error) {
-    showDetail(`${item.label}: ${error.message ?? error}`);
+    showDetail(`${item.label}: ${error.message ?? error}`, detailTitle(file, item));
     return;
   }
+  const remembered = chartViews.get(item);
+  $('detail-title').textContent = detailTitle(file, item);
   const chart = $('chart');
   chart.replaceChildren(
     grid.patternChart(pattern, {
       config: file.config,
-      title: `${file.name}  ›  ${item.label}`,
       // The record's own bytes, edited in place. Everything downstream -
       // Restore, Save - reads the items, so an edit is live the moment it lands.
       payload: item.payload,
       onEdit: (before) => recordEdit(file, item, before),
+      view: remembered?.view ?? null,
+      lane: remembered?.lane ?? null,
+      onViewChange: (view, lane) => chartViews.set(item, { view, lane }),
     }),
   );
   chart.hidden = false;
@@ -473,7 +495,8 @@ function describeItem(file, item) {
   return render.configLines(decoded).join('\n');
 }
 
-function showDetail(text) {
+function showDetail(text, title = '') {
+  $('detail-title').textContent = title;
   $('detail').textContent = text;
   $('detail').hidden = false;
   $('chart').hidden = true;

@@ -293,6 +293,78 @@ test('a chart column maps onto the ext loop it repeats', () => {
   assert.equal(edit.extStepIndex(9, 0), 9);
 });
 
+/* setLength backs the LAST STEP playhead drag - see grid.js. Its own tests
+ * live here rather than beside the DOM code because there is no DOM to drive
+ * it from in a node test; the drag logic itself is a thin layer over this. */
+
+test('setLength writes only OFF_SETUP, storing steps - 1', () => {
+  const payload = scratchRecord();
+
+  assert.equal(edit.setLength(payload, 16), 16);
+  assert.equal(payload[records.OFF_SETUP], 15);
+  assert.equal(records.decodePattern(payload).steps, 16);
+
+  const before = payload.slice();
+  assert.equal(edit.setLength(payload, 1), 1);
+  assert.equal(payload[records.OFF_SETUP], 0);
+  assert.equal(records.decodePattern(payload).steps, 1);
+  assert.deepEqual(changed(before, payload), [records.OFF_SETUP]);
+});
+
+test('setLength clamps to 1..16', () => {
+  const payload = scratchRecord();
+
+  assert.equal(edit.setLength(payload, 0), 1);
+  assert.equal(payload[records.OFF_SETUP], 0);
+  assert.equal(edit.setLength(payload, -5), 1);
+  assert.equal(payload[records.OFF_SETUP], 0);
+
+  assert.equal(edit.setLength(payload, 17), 16);
+  assert.equal(payload[records.OFF_SETUP], 15);
+  assert.equal(edit.setLength(payload, 100), 16);
+  assert.equal(payload[records.OFF_SETUP], 15);
+});
+
+test('setLength touches nothing else in the record', () => {
+  const payload = scratchRecord();
+  const before = payload.slice();
+
+  edit.setLength(payload, 9);
+
+  assert.deepEqual(changed(before, payload), [records.OFF_SETUP]);
+});
+
+test('a length change moves the ext loop too when it has no length of its own', () => {
+  const payload = scratchRecord();
+  // Byte 36 (OFF_SETUP + 4) at 0 means "written before ext length existed" -
+  // decodePattern then has the ext loop follow the pattern length, so
+  // changing LAST STEP has to move it right along.
+  payload[records.OFF_SETUP + 4] = 0;
+
+  edit.setLength(payload, 12);
+  let decoded = records.decodePattern(payload);
+  assert.equal(decoded.steps, 12);
+  assert.equal(decoded.extSteps, 12, 'the ext loop follows the pattern length');
+
+  edit.setLength(payload, 5);
+  decoded = records.decodePattern(payload);
+  assert.equal(decoded.steps, 5);
+  assert.equal(decoded.extSteps, 5);
+});
+
+test('a length change leaves an explicit ext length alone', () => {
+  const payload = scratchRecord();
+  // A nonzero storedExtLength means the pattern carries its own ext length,
+  // biased by one; 9 here decodes to an ext loop of 9 steps.
+  payload[records.OFF_SETUP + 4] = 9;
+
+  edit.setLength(payload, 3);
+
+  const decoded = records.decodePattern(payload);
+  assert.equal(decoded.steps, 3);
+  assert.equal(decoded.extSteps, 9, 'an explicit ext length does not follow the pattern length');
+});
+
 test('editing a repeated column changes the step it is repeating', () => {
   const payload = scratchRecord();
   const track = 0;
