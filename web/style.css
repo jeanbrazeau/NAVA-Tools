@@ -1171,9 +1171,6 @@ dialog::backdrop {
      a port list with one port in it stood 256px high around 17px of content.
      Stacked, the boxes should be exactly as tall as what is in them. */
   .row > * { width: 100%; flex: none; }
-  /* Dump and Restore stack like everything else here, in the order they are
-     written: taking a backup off the unit comes before putting one back, and
-     side by side in a column this narrow left both grids scrolling. */
   /* Each panel gets its own height. The panels normally share one grid cell so
      the dialog is sized by the largest and stops resizing as you switch tabs -
      worth it on a wide window, where a centred box jumping about is very
@@ -1202,3 +1199,15 @@ dialog::backdrop {
   .shell-status { padding-bottom: 8px; }
   .tabs { flex-wrap: wrap; }
 }
+
+/* Dump and Restore hold out longer than the rest of the panel. The row above
+   stacks everything at 760, but these two are the same grid asking opposite
+   questions and are read against each other, so they stay beside each other
+   for another two hundred pixels. Below 560 they stack in the order they are
+   written - taking a backup off the unit before putting one back - and each
+   takes the full width, which by then is the only way either grid fits. */
+@media (min-width: 561px) and (max-width: 760px) {
+  .transfer-row { flex-direction: row; }
+  .transfer-row > * { width: auto; flex: 1 1 0; min-width: 0; }
+}
+
