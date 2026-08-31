@@ -415,14 +415,32 @@ export function patternChart(pattern, {
       stroke.changed = true;
     };
 
+    /** Which step an x falls on within one lane's own cells.
+     *
+     * Past the last playing step it clamps rather than stopping: dragging off
+     * the end of a short pattern should fill it to the end, not stall. */
+    const columnAt = (own, clientX) => {
+      for (let i = 0; i < steps; i += 1) {
+        if (clientX < own[i].getBoundingClientRect().right) return i;
+      }
+      return steps - 1;
+    };
+
     const extend = (event) => {
       if (!stroke) return;
-      // elementFromPoint rather than pointerenter, because a touch pointer is
-      // captured by the element it started on and never enters another.
-      const at = owners.get(
-        document.elementFromPoint(event.clientX, event.clientY)?.closest?.('td.cell'),
-      );
-      if (at && at.lane === stroke.lane) paintStep(at.step);
+      // The lane is fixed for the whole stroke, so only x is consulted - no
+      // hit-test against whatever happens to be under the pointer. Drifting
+      // above or below the row keeps filling the lane, which is what the hand
+      // does when it sweeps across sixteen cells 17px tall.
+      const own = cells.get(stroke.lane);
+      if (!own) return;
+      const step = columnAt(own, event.clientX);
+      // Everything between the last step and this one, because a quick drag
+      // covers several columns between two pointermove events and a run with
+      // gaps in it is not what the gesture looked like.
+      const from = stroke.last ?? step;
+      for (let i = Math.min(from, step); i <= Math.max(from, step); i += 1) paintStep(i);
+      stroke.last = step;
     };
 
     const beginStroke = (event) => {
@@ -461,6 +479,7 @@ export function patternChart(pattern, {
       };
       if (kind !== 'acc') pick(kind, index);
       paintStep(step);
+      stroke.last = step;
       root.classList.add('painting');
       // Bound only for the life of the stroke. A chart is rebuilt every time a
       // different pattern is selected, so listeners left on the document would

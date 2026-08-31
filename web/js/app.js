@@ -880,8 +880,8 @@ $('do-flash').addEventListener('click', async () => {
   const ok = await confirmDialog(
     'Overwrite the firmware?',
     `${file.name}: ${file.pages} pages, about ${seconds}s. The unit must already ` +
-      'be in bootloader mode. Interrupting this leaves it unable to boot until ' +
-      'another image is flashed.',
+      'be in bootloader mode — steps 1, 3 and 5 held while powering it on. ' +
+      'Interrupting this leaves it unable to boot until another image is flashed.',
     'Flash',
   );
   if (!ok) return;
