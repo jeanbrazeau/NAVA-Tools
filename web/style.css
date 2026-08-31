@@ -459,8 +459,6 @@ table.matrix-grid { margin-inline: auto; }
 .matrix-cell {
   appearance: none;
   display: block;
-  width: 16px;
-  height: 16px;
   padding: 0;
   border: 1px solid var(--ink);
   background: var(--paper);
@@ -490,19 +488,22 @@ table.matrix-grid { margin-inline: auto; }
    them says they are a different thing being counted. */
 .matrix-tracks .matrix-cell { border-top-width: 2px; }
 
-/* Wide enough to fill the box it is in, so the grid reads as the panel's own
-   surface rather than a stamp in the corner of it. Fixed layout so the sixteen
-   slot columns divide what is left evenly after the row labels, which get a
-   width of their own - TRK is the widest of them and is not negotiable.
-   Only above the breakpoint: stacked, the box is narrow enough that the cells
-   should keep their natural size and the grid scroll instead. */
-@media (min-width: 761px) {
-  table.matrix-grid { width: 100%; table-layout: fixed; }
-  .matrix-corner, .matrix-row-head, .matrix-gutter { width: 2.4rem; }
-  /* Height follows width rather than being set: the column width is whatever
-     is left after the labels, and only the browser knows it. aspect-ratio is
-     how a cell stays square through that. */
-  .matrix-cell { width: 100%; height: auto; aspect-ratio: 1; }
+/* As wide as the box it sits in, with a fixed layout so the sixteen slot
+   columns divide what is left after the row labels and the gutter opposite
+   them. Height follows width through aspect-ratio rather than being set: only
+   the browser knows what the column came out as.
+
+   The floor is what stops the cells shrinking when the box does. Below it the
+   columns stop dividing and the table overflows instead, which .matrix scrolls
+   - a grid you scroll is usable, a grid of five-pixel cells is not. */
+table.matrix-grid { width: 100%; table-layout: fixed; }
+.matrix-corner, .matrix-row-head, .matrix-gutter { width: 2.4rem; }
+.matrix-cell {
+  width: 100%;
+  height: auto;
+  aspect-ratio: 1;
+  min-width: 22px;
+  min-height: 22px;
 }
 
 /* The image list and Flash on one line. The list takes every spare pixel, so
