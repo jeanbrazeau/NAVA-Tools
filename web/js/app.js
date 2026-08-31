@@ -12,13 +12,11 @@
 
 import * as protocol from './protocol.js';
 import * as bootloader from './bootloader.js';
-import * as edit from './edit.js';
 import * as grid from './grid.js';
 import { History } from './history.js';
 import * as ihex from './ihex.js';
 import * as library from './library.js';
 import * as midi from './midi.js';
-import * as records from './records.js';
 import * as releases from './releases.js';
 import * as render from './render.js';
 import * as selection from './selection.js';
@@ -507,63 +505,6 @@ function extTrackCount(item) {
   }
 }
 
-/** The SCALE picker between the bank tabs and INST./EXT.
- *
- * Rebuilt from the record rather than from what was last clicked, like
- * everything else that shows a pattern: an undo can change the byte without
- * going anywhere near this control, and the picker has to say what the record
- * now holds. A pattern that is not on screen, or a record whose PPQN is not
- * one of the four - which only a blank slot produces - leaves every division
- * unselected rather than guessing one. */
-function refreshScalePicker() {
-  const wrap = $('scale-picker');
-  const label = document.createElement('span');
-  label.className = 'seg-label';
-  label.textContent = 'SCALE';
-  wrap.replaceChildren(label);
-  const item = state.pattern && state.detailItem === state.pattern ? state.pattern : null;
-  let scale = null;
-  try {
-    scale = item ? item.decoded().scale : null;
-  } catch {
-    scale = null;
-  }
-  for (const ppqn of records.SCALE_ORDER) {
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.className = 'seg-btn';
-    button.textContent = records.SCALE_NAMES[ppqn];
-    button.disabled = !item;
-    button.setAttribute('role', 'radio');
-    button.setAttribute('aria-checked', String(scale === ppqn));
-    button.addEventListener('click', () => setPatternScale(ppqn));
-    wrap.appendChild(button);
-  }
-  // A PPQN no division stands for is shown rather than hidden: a pattern whose
-  // scale byte is junk should look like one.
-  if (item && scale !== null && !records.SCALE_ORDER.includes(scale)) {
-    const odd = document.createElement('span');
-    odd.className = 'seg-odd';
-    odd.textContent = `${scale}ppqn`;
-    wrap.appendChild(odd);
-  }
-}
-
-/** Write the pattern's SCALE, as one undoable edit.
- *
- * The chart does not draw scale, so nothing under it is rebuilt - only the
- * picker relights. Picking the division it is already on writes nothing, for
- * the same reason the dials refuse it: an undo entry that undoes to itself. */
-function setPatternScale(ppqn) {
-  const file = state.selectedFile;
-  const item = state.pattern;
-  if (!file || !item || state.detailItem !== item) return;
-  const before = item.payload.slice();
-  if (edit.setScale(item.payload, ppqn) === before[records.OFF_SETUP + 1]) return;
-  recordEdit(file, item, before);
-  refreshScalePicker();
-}
-
 function refreshViewButtons() {
   const instButton = $('view-inst');
   const extButton = $('view-ext');
@@ -586,7 +527,6 @@ function refreshConfigEntry() {
 function refreshBrowse() {
   refreshBankButtons();
   refreshPatternButtons();
-  refreshScalePicker();
   refreshViewButtons();
   refreshConfigEntry();
 

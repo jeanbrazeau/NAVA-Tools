@@ -26,6 +26,8 @@ import {
   INSTRUMENT_NAMES,
   NBR_EXT_TRACK,
   NBR_STEP,
+  SCALE_NAMES,
+  SCALE_ORDER,
   TOTAL_ACC,
   decodePattern,
   noteName,
@@ -152,9 +154,25 @@ export function patternChart(pattern, {
     return true;
   };
 
+  /** Set the pattern's SCALE, and say whether that changed anything.
+   *
+   *  Same shape as turnDial, and the same refusal: picking the division it is
+   *  already on writes nothing rather than pushing an undo entry that undoes
+   *  to itself. edit.setScale refuses a PPQN no division stands for, so a
+   *  record holding junk cannot be nudged into holding different junk. */
+  const pickScale = (ppqn) => {
+    if (current.scale === ppqn) return false;
+    if (edit.setScale(payload, ppqn) !== ppqn) return false;
+    current = decodePattern(payload);
+    const wrap = readoutBar?.querySelector('.seg[data-seg="scale"]');
+    if (wrap) relightScale(wrap, current.scale);
+    return true;
+  };
+
   /* The readouts are rebuilt whole only by draw(), which is the only thing
-     that changes what is in them - a dial turn relights its own circles in
-     place instead, so a drag or a focus ring is not thrown away mid-gesture. */
+     that changes what is in them - a dial turn or a scale pick relights its
+     own control in place instead, so a drag or a focus ring is not thrown
+     away mid-gesture. */
   const drawReadouts = () => {
     readoutBar = readouts(current, Boolean(payload));
     body.appendChild(readoutBar);
@@ -628,10 +646,7 @@ export function patternChart(pattern, {
       const wrap = event.target.closest?.('.dial');
       if (!wrap || !root.contains(wrap)) return;
       const field = wrap.dataset.dial;
-      const from = dialValue(field);
-      // A dial holding a byte no position stands for starts from 0, so the
-      // first arrow key moves it somewhere real rather than nowhere.
-      const here = from >= 0 && from < edit.NBR_DIAL ? from : 0;
+      const here = dialValue(field);
       let wanted;
       if (event.key === 'ArrowLeft' || event.key === 'ArrowDown') wanted = here - 1;
       else if (event.key === 'ArrowRight' || event.key === 'ArrowUp') wanted = here + 1;
@@ -640,10 +655,53 @@ export function patternChart(pattern, {
       else if (event.key === 'Enter' || event.key === ' ') wanted = Number(event.target.dataset.pos);
       else return;
       event.preventDefault();
-      const clamped = Math.max(0, Math.min(edit.NBR_DIAL - 1, wanted));
+      // A dial holding a byte no position stands for has nowhere on the row to
+      // move from, so the first key lands on the position the tab stop is
+      // already sitting on rather than one past it - the same recovery the
+      // SCALE picker makes from a PPQN no division names.
+      const real = here >= 0 && here < edit.NBR_DIAL;
+      const clamped = real ? Math.max(0, Math.min(edit.NBR_DIAL - 1, wanted)) : 0;
       const before = payload.slice();
       if (!turnDial(field, clamped)) return;
       wrap.querySelector('.lamp.on')?.focus();
+      onEdit?.(before);
+    };
+
+    /* SCALE. A click, not a gesture: four named divisions are a list to pick
+     * from, not a knob to sweep, so there is nothing to gather up and each
+     * pick is its own edit. */
+    const pickFrom = (button) => {
+      const before = payload.slice();
+      if (!pickScale(Number(button.dataset.ppqn))) return;
+      onEdit?.(before);
+    };
+
+    const clickScale = (event) => {
+      const button = event.target.closest?.('.seg-btn');
+      if (!button || !root.contains(button)) return;
+      pickFrom(button);
+    };
+
+    /* Arrow keys along the divisions, because this is a radio group too. They
+     * move the selection rather than just the focus, which is what a radio
+     * group does and what makes the four audible one after another. */
+    const keyScale = (event) => {
+      const wrap = event.target.closest?.('.seg[data-seg="scale"]');
+      if (!wrap || !root.contains(wrap)) return;
+      const at = SCALE_ORDER.indexOf(current.scale);
+      let wanted;
+      if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') wanted = at - 1;
+      else if (event.key === 'ArrowRight' || event.key === 'ArrowDown') wanted = at + 1;
+      else if (event.key === 'Home') wanted = 0;
+      else if (event.key === 'End') wanted = SCALE_ORDER.length - 1;
+      else return;
+      event.preventDefault();
+      // A record holding a PPQN no division names has no place in the list to
+      // move from, so the first arrow key lands on one rather than nowhere.
+      const clamped = at < 0 ? 0 : Math.max(0, Math.min(SCALE_ORDER.length - 1, wanted));
+      const before = payload.slice();
+      if (!pickScale(SCALE_ORDER[clamped])) return;
+      wrap.querySelector('.seg-btn.on')?.focus();
       onEdit?.(before);
     };
 
@@ -651,6 +709,8 @@ export function patternChart(pattern, {
     root.addEventListener('pointerdown', beginLength);
     root.addEventListener('pointerdown', beginDial);
     root.addEventListener('keydown', keyDial);
+    root.addEventListener('click', clickScale);
+    root.addEventListener('keydown', keyScale);
   }
 
   return root;
@@ -692,7 +752,7 @@ function dial(field, name, value, editable) {
       // state; they have no click handler of their own, because the gesture
       // lives on the strip. Keyboard Enter/Space reaches the same code by
       // bubbling up to it.
-      lamp.tabIndex = i === value ? 0 : -1;
+      lamp.tabIndex = -1;
     }
     wrap.appendChild(lamp);
   }
@@ -713,40 +773,91 @@ function relightDial(wrap, name, value) {
   for (const lamp of wrap.querySelectorAll('.lamp')) {
     const on = Number(lamp.dataset.pos) === value;
     lamp.classList.toggle('on', on);
-    if (editable) {
-      lamp.setAttribute('aria-checked', String(on));
-      // One stop in the tab order for the whole group, landing on the position
-      // it is set to - the arrow keys move within it.
-      lamp.tabIndex = on ? 0 : -1;
-    }
+    if (editable) lamp.setAttribute('aria-checked', String(on));
   }
   // A value past the last position can only come from a record the machine
   // never wrote - a blank 0xFF slot decodes that way - so it fills no circle
   // and prints the raw byte instead of quietly reading as position 0.
-  const odd = wrap.querySelector('.dial-odd');
-  odd.textContent = value >= 0 && value < edit.NBR_DIAL ? '' : String(value);
+  const real = value >= 0 && value < edit.NBR_DIAL;
+  wrap.querySelector('.dial-odd').textContent = real ? '' : String(value);
+  if (editable) {
+    // One stop in the tab order for the whole group, landing on the position
+    // the dial is set to - the arrow keys move within it. A dial holding a
+    // byte no position stands for has nothing lit to land on, and putting the
+    // stop on the first circle rather than nowhere is what keeps the keyboard
+    // able to reach the one dial that most needs correcting.
+    const stop = real ? wrap.querySelector('.lamp.on') : wrap.querySelector('.lamp');
+    for (const lamp of wrap.querySelectorAll('.lamp')) lamp.tabIndex = lamp === stop ? 0 : -1;
+  }
+}
+
+/** SCALE, as the four divisions the switch on the machine has rather than as
+ *  the one it is on.
+ *
+ *  A short closed list, so all four are on show and picking one is a click -
+ *  the same reason the dials show all eight positions. It is not a dial
+ *  though: the divisions are not detents you sweep past, they are four names,
+ *  so they are named buttons and the chosen one is an invert, which is how GEM
+ *  said "this one".
+ *
+ *  A PPQN none of them stands for is printed rather than hidden, for the same
+ *  reason an out-of-range dial prints its byte: a pattern whose scale is junk
+ *  should look like one instead of like 1/16. */
+function scalePicker(value, editable) {
+  const wrap = el('div', 'seg');
+  wrap.dataset.seg = 'scale';
+  wrap.setAttribute('role', editable ? 'radiogroup' : 'img');
+  wrap.setAttribute('aria-label', `SCALE ${SCALE_NAMES[value] ?? value}`);
+  for (const ppqn of SCALE_ORDER) {
+    const button = el(editable ? 'button' : 'span', 'seg-btn', SCALE_NAMES[ppqn]);
+    button.dataset.ppqn = String(ppqn);
+    if (editable) {
+      button.type = 'button';
+      button.setAttribute('role', 'radio');
+      button.tabIndex = -1;
+    }
+    wrap.appendChild(button);
+  }
+  wrap.appendChild(el('span', 'seg-odd'));
+  relightScale(wrap, value);
+  return wrap;
+}
+
+/** Move the SCALE picker's selection, in place - same reason as relightDial. */
+function relightScale(wrap, value) {
+  wrap.setAttribute('aria-label', `SCALE ${SCALE_NAMES[value] ?? value}`);
+  const editable = wrap.getAttribute('role') === 'radiogroup';
+  for (const button of wrap.querySelectorAll('.seg-btn')) {
+    const on = Number(button.dataset.ppqn) === value;
+    button.classList.toggle('on', on);
+    if (editable) button.setAttribute('aria-checked', String(on));
+  }
+  const known = SCALE_ORDER.includes(value);
+  wrap.querySelector('.seg-odd').textContent = known ? '' : `${value}ppqn`;
+  if (editable) {
+    // One tab stop for the group, as on the dials - and on the first division
+    // rather than nowhere when the record holds a PPQN none of them names.
+    const stop = known ? wrap.querySelector('.seg-btn.on') : wrap.querySelector('.seg-btn');
+    for (const b of wrap.querySelectorAll('.seg-btn')) b.tabIndex = b === stop ? 0 : -1;
+  }
 }
 
 /** The boxes under the grid, where the panel prints TRACK and MODE.
  *
- *  LAST STEP is last and hard right, opposite the handle it reports: the
- *  playhead sits at the top of the grid on the column the pattern loops at,
- *  and the readout that confirms the exact number belongs at the far end of
- *  the same edge rather than at the head of the row where it reads as the
- *  first of four equal facts.
+ *  SHUFFLE, FLAM and SCALE are the three things about a pattern you set rather
+ *  than read, so they are together and in that order, and LAST STEP is last
+ *  and hard right, opposite the handle it reports: the playhead sits at the
+ *  top of the grid on the column the pattern loops at, and the readout that
+ *  confirms the exact number belongs at the far end of the same edge.
  *
- *  SCALE is not here: it moved up into the control bar between the bank tabs
- *  and INST./EXT, where app.js owns it - it is picked from a short list of
- *  divisions rather than read off, and it belongs with the other controls that
- *  say what you are looking at.
- *
- *  `editable` makes the two dials editable; without it every box is text,
- *  which is what a read-only chart wants. */
+ *  `editable` makes all three editable; without it every box is text, which is
+ *  what a read-only chart wants. */
 function readouts(pattern, editable = false) {
   const wrap = el('div', 'chart-readouts');
   const boxes = [
     ['SHUFFLE', dial('shuffle', 'SHUFFLE', pattern.shuffle, editable)],
     ['FLAM', dial('flam', 'FLAM', pattern.flam, editable)],
+    ['SCALE', scalePicker(pattern.scale, editable)],
   ];
   if (pattern.extLength !== pattern.length) boxes.push(['EXT STEPS', String(pattern.extSteps)]);
   if (pattern.groupLength) {
@@ -765,5 +876,5 @@ function readouts(pattern, editable = false) {
 export function chartLegend(editable = false) {
   const marks = 'loud  ■    soft  ▒    flam  ◤    beyond last step  ╱';
   if (!editable) return marks;
-  return `${marks}\nclick cycles a step  ·  drag along a lane to lay down a run  ·  shift for flam  ·  drag LAST STEP to change the pattern's length  ·  click or drag along the SHUFFLE and FLAM dials to turn them`;
+  return `${marks}\nclick cycles a step  ·  drag along a lane to lay down a run  ·  shift for flam  ·  drag LAST STEP to change the pattern's length  ·  click or drag along the SHUFFLE and FLAM dials to turn them  ·  pick a SCALE division`;
 }
