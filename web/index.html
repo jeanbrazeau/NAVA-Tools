@@ -84,21 +84,23 @@
          Anything else - an older tag, a fork - is still a .syx dropped on the
          Browse tab, which is how any other file gets in. -->
     <fieldset class="group">
-      <legend>Firmware Select</legend>
-      <label class="field">Image
-        <select id="firmware-file"><option value="">— loading the deployed image —</option></select>
-      </label>
+      <legend>Firmware Image Select</legend>
+      <!-- The list and the button it feeds, on one line: the legend already
+           says what the list is, so a label over it would only say Image
+           again. The select takes the slack, which puts Flash hard right.
+
+           No Inspect button either: picking an image inspects it, which is the
+           only time the answer changes. Flash is the one irreversible thing on
+           the page, so it is the one control drawn as solid ink. -->
+      <div class="image-pick">
+        <select id="firmware-file" aria-label="Firmware image"><option value="">— loading the deployed image —</option></select>
+        <button id="do-flash" class="btn primary">Flash</button>
+      </div>
       <!-- The picker behind the list's "Other…" entry. Its own input rather
            than the one Browse uses: that one takes several files and drops
            them into the file list, and this one takes a single image and
            selects it here. -->
       <input id="firmware-input" type="file" accept=".syx,.SYX,.hex,.HEX" hidden>
-      <!-- No Inspect button: picking an image inspects it, which is the only
-           time the answer changes. Flash is the one irreversible thing on the
-           page, so it is the one control drawn as solid ink. -->
-      <div class="buttons">
-        <button id="do-flash" class="btn primary">Flash</button>
-      </div>
     </fieldset>
 
     <fieldset class="group">
