@@ -103,12 +103,9 @@ export async function restore(ports, dumps, timeout, retries, { progress, should
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-// How far ahead of real time pages are handed to the MIDI service. Timestamped
-// sends are paced by the browser's MIDI thread rather than by setTimeout, which
-// a background tab throttles to once a minute - a tab switch mid-flash would
-// otherwise stall the transfer for as long as the user looked away.
-const SCHEDULE_WINDOW_MS = 2000;
-const SCHEDULE_LEAD_MS = 100;
+// How far ahead of real time a page's timestamp may sit when it is handed to
+// the MIDI service. Small on purpose - see the pacing note below.
+const SCHEDULE_LEAD_MS = 20;
 
 /** Send firmware pages with a fixed inter-message delay.
  *
@@ -116,47 +113,43 @@ const SCHEDULE_LEAD_MS = 100;
  * and does not buffer a second one while erasing, so pushing faster drops pages
  * and reports nothing either way. Slower is harmless - it waits.
  *
- * Pages go out in scheduled windows rather than all at once so a cancel takes
- * effect within one window without depending on MIDIOutput.clear(), and so the
- * pacing survives the tab losing focus. Cancelling mid-flash leaves the unit
- * with a partial image; the caller is expected to have said so before offering
- * the option.
+ * The pacing is enforced HERE, in real time, one message per turn of the loop -
+ * not by queuing a window of timestamped sends and trusting the MIDI stack to
+ * space them. That trust failed on hardware: the same image over the same
+ * dongle flashed from the CLI, which sleeps between sends, and did nothing from
+ * this path, which handed the service 2s of pages at a time. Every layer
+ * between send() and the DIN jack - the browser's scheduler, the OS MIDI
+ * service, the dongle's own buffer re-serialising onto a 3125-byte/s wire - has
+ * to honour the spacing for a queued window to arrive intact, and at least one
+ * of them did not. Each send still carries its due time as a timestamp, so a
+ * stack that does schedule places the page precisely; one that sends
+ * immediately is only SCHEDULE_LEAD_MS early, never bursty.
+ *
+ * The cost is that a background tab's setTimeout throttling now slows the
+ * transfer instead of being ridden out by a pre-queued window. That trade is
+ * right: the bootloader sits waiting between pages, so a late page is a pause,
+ * while a burst is a corrupted transfer with no symptom until the unit fails to
+ * restart. Cancelling mid-flash leaves the unit with a partial image; the
+ * caller is expected to have said so before offering the option.
  */
 export async function flash(ports, messages, delayMs, { progress, shouldStop } = {}) {
   const total = messages.length;
-  const perWindow = Math.max(1, Math.floor(SCHEDULE_WINDOW_MS / Math.max(delayMs, 1)));
   const start = performance.now() + SCHEDULE_LEAD_MS;
-  let scheduled = 0;
 
-  // Pages that have actually reached the wire, not pages handed to the queue:
-  // the progress bar is the only thing telling the user how long to keep the
-  // unit still, and it must not reach the end two seconds early.
-  const delivered = () =>
-    Math.max(0, Math.min(total, Math.floor((performance.now() - start) / delayMs) + 1));
-
-  while (scheduled < total || delivered() < total) {
+  for (let index = 0; index < total; index += 1) {
+    const due = start + index * delayMs;
+    // Wait in slices so a cancel lands between pages and the bar still moves.
+    while (performance.now() < due - SCHEDULE_LEAD_MS) {
+      if (shouldStop && shouldStop()) break;
+      if (progress) progress(index, total, `page ${index}`);
+      await sleep(Math.min(100, Math.max(1, due - SCHEDULE_LEAD_MS - performance.now())));
+    }
     if (shouldStop && shouldStop()) {
       if (ports.output && typeof ports.output.clear === 'function') ports.output.clear();
       return { collected: new Uint8Array(0), failures: ['cancelled mid-flash'], ok: false };
     }
-
-    if (scheduled < total) {
-      const end = Math.min(scheduled + perWindow, total);
-      for (let index = scheduled; index < end; index += 1) {
-        ports.sendRaw(messages[index], start + index * delayMs);
-      }
-      scheduled = end;
-    }
-
-    // Sleep in slices: the window has to play out before the next is queued, so
-    // that a cancel flushes at most one window, but the bar still moves.
-    const windowEnd = start + (scheduled - 1) * delayMs;
-    while (performance.now() < windowEnd) {
-      if (shouldStop && shouldStop()) break;
-      if (progress) progress(delivered(), total, `page ${delivered()}`);
-      await sleep(Math.min(100, Math.max(1, windowEnd - performance.now())));
-    }
-    if (progress) progress(delivered(), total, `page ${delivered()}`);
+    ports.sendRaw(messages[index], due);
+    if (progress) progress(index + 1, total, `page ${index + 1}`);
   }
 
   return { collected: new Uint8Array(0), failures: [], ok: true };

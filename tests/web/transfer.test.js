@@ -186,21 +186,30 @@ test('flash paces pages and reports every one', async () => {
   );
 
   const seen = [];
+  const before = performance.now();
   const outcome = await transfer.flash(ports, messages, 5, {
     progress: (done, total) => seen.push([done, total]),
   });
+  const elapsed = performance.now() - before;
 
   assert.ok(outcome.ok);
   assert.equal(ports.fake.scheduled.length, 12);
   assert.equal(seen.at(-1)[0], 12, 'progress reaches the last page');
 
-  // Timestamps, not sleeps: the bootloader commits a page per message and drops
-  // anything sent while it is erasing, so the spacing has to be the browser's
-  // job rather than a timer the tab can throttle.
+  // The spacing is enforced twice: each send carries its due time as a
+  // timestamp, AND the loop waits in real time before handing the next page
+  // over. The second is what flashes hardware - a queued window of timestamped
+  // sends arrived as a burst through at least one browser/driver/dongle stack,
+  // while the CLI's sleep pacing worked over the same dongle - so a regression
+  // to queue-ahead scheduling must fail here.
   const stamps = ports.fake.scheduled.map((s) => s.timestamp);
   for (let i = 1; i < stamps.length; i += 1) {
     assert.equal(Math.round(stamps[i] - stamps[i - 1]), 5, `gap before page ${i}`);
   }
+  assert.ok(
+    elapsed >= (messages.length - 1) * 5 - 20,
+    `12 pages at 5ms took ${elapsed.toFixed(1)}ms; pages are being queued ahead, not paced`,
+  );
 });
 
 test('cancelling a flash flushes the queue and says so', async () => {
