@@ -125,6 +125,18 @@ export function accentState(payload, step) {
   return (readMask(payload, OFF_INST + 2 * TOTAL_ACC) >> step) & 1 ? 'accent' : 'off';
 }
 
+/** Which ext step a chart column actually is.
+ *
+ * The ext layer runs on its own length, so a loop shorter than the kit repeats
+ * against it - the firmware plays step `column % extSteps`, and the chart draws
+ * the same. An editor that wrote the raw column instead would set a step past
+ * the end of the loop: the machine would never play it, and the cell clicked
+ * would not change, because it is displaying a different step of the loop.
+ * That is exactly the bug this exists to stop happening again. */
+export function extStepIndex(column, extSteps) {
+  return extSteps > 0 ? column % extSteps : column;
+}
+
 export function extState(payload, track, step) {
   if (!((readMask(payload, OFF_EXT_TRACK + 2 * track) >> step) & 1)) return 'off';
   // extAccent is stored inverted, so a stored 0 means accented.

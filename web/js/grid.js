@@ -179,7 +179,14 @@ export function patternChart(pattern, { config = null, title = '', payload = nul
       note ? `ext track ${track + 1}, note ${note}` : `ext track ${track + 1}`,
       // The ext layer wraps on its own length, so a shorter ext loop repeats
       // against the kit rather than leaving the tail blank.
-      (i) => cellFor(i, i < steps ? pattern.extStep(track, i % pattern.extSteps) : 'off'),
+      (i) => {
+        const cell = cellFor(i, i < steps ? pattern.extStep(track, i % pattern.extSteps) : 'off');
+        // A dashed rule where the loop starts over. Without it, editing one
+        // column and watching three change looks like a fault rather than the
+        // repeat it is.
+        if (i > 0 && i < steps && i % pattern.extSteps === 0) cell.classList.add('wrap');
+        return cell;
+      },
     );
   }
 
@@ -306,9 +313,12 @@ export function patternChart(pattern, { config = null, title = '', payload = nul
         const wanted = !edit.flamState(payload, index, step);
         write = (s) => edit.setFlam(payload, index, s, wanted);
       } else if (kind === 'ext') {
-        const from = edit.extState(payload, index, step);
+        // A column past the end of the ext loop is a repeat of a step inside
+        // it, so it edits that step - the same one the column is drawing.
+        const wrap = (column) => edit.extStepIndex(column, current.extSteps);
+        const from = edit.extState(payload, index, wrap(step));
         const wanted = from === 'off' ? 'normal' : from === 'normal' ? 'accent' : 'off';
-        write = (s) => edit.setExtStep(payload, index, s, wanted);
+        write = (s) => edit.setExtStep(payload, index, wrap(s), wanted);
       } else if (kind === 'acc') {
         const wanted = edit.accentState(payload, step) === 'off' ? 'accent' : 'off';
         write = (s) => edit.setAccent(payload, s, wanted);

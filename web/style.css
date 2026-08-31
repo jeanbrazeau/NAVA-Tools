@@ -457,6 +457,9 @@ td.cell {
 /* The beat rule. The machine prints it every four steps and it is the only
    reason a 16-step row is readable without counting. */
 td.cell.beat, th.chart-num.beat { border-left-width: 2px; }
+/* Where a short ext loop starts over. Dashed because it is not a boundary in
+   the pattern - the steps to its right are the same steps repeating. */
+td.cell.wrap { border-left: 2px dashed var(--ink); }
 td.cell.loud { background: var(--ink); }
 td.cell.soft { background-image: var(--dither); background-size: 2px 2px; }
 /* Flam: a filled corner, which is the one mark that survives on top of both a

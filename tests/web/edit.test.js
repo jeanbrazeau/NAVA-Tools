@@ -277,3 +277,41 @@ test('setFlam is explicit, and still refuses a silent step', () => {
   edit.setFlam(payload, LT, 6, false);
   assert.equal(records.decodePattern(payload).step(LT, 6).flam, false);
 });
+
+test('a chart column maps onto the ext loop it repeats', () => {
+  // The bug this pins: the chart draws column c as step c % extSteps, so an
+  // editor writing the raw column sets a step past the end of the loop. The
+  // machine never plays it and the clicked cell does not change, because it is
+  // showing a different step - a click that looks dead and quietly writes junk.
+  assert.equal(edit.extStepIndex(7, 5), 2);
+  assert.equal(edit.extStepIndex(4, 5), 4);
+  assert.equal(edit.extStepIndex(15, 5), 0);
+  // A loop as long as the kit is its own identity.
+  for (let c = 0; c < 16; c += 1) assert.equal(edit.extStepIndex(c, 16), c);
+  // Defensive: extSteps is never 0 through decodePattern, but division by it
+  // would be a silent NaN rather than a visible failure.
+  assert.equal(edit.extStepIndex(9, 0), 9);
+});
+
+test('editing a repeated column changes the step it is repeating', () => {
+  const payload = scratchRecord();
+  const track = 0;
+  const extSteps = 5;
+  payload[records.OFF_EXT_TRACK + 2 * track] = 0;
+  payload[records.OFF_EXT_TRACK + 2 * track + 1] = 0;
+
+  // Column 7 of a 5-step loop is step 2.
+  edit.setExtStep(payload, track, edit.extStepIndex(7, extSteps), 'normal');
+
+  const decoded = records.decodePattern(payload);
+  assert.equal(decoded.extStep(track, 2), 'normal', 'the underlying step is set');
+  assert.equal(decoded.extStep(track, 7), 'off', 'nothing was written past the loop');
+  // And the chart, which draws column c as step c % extSteps, now shows it on
+  // every column that repeats step 2.
+  for (const column of [2, 7, 12]) {
+    assert.equal(
+      decoded.extStep(track, column % extSteps), 'normal',
+      `column ${column} should draw the step it repeats`,
+    );
+  }
+});
