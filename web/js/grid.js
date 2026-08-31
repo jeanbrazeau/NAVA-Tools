@@ -129,34 +129,35 @@ export function patternChart(pattern, {
   let numCells;
   let stroke = null;       // a cell-painting gesture in progress
   let lengthDrag = null;   // a LAST STEP drag in progress
-  let readoutBar = null;   // the readouts under the grid, replaced in place
+  let dialDrag = null;     // a SHUFFLE or FLAM drag in progress
+  let readoutBar = null;   // the readouts under the grid, replaced by draw()
 
   const key = (kind, index) => `${kind}:${index}`;
 
-  /** Turn a SHUFFLE or FLAM dial to a position.
+  const dialValue = (field) => (field === 'shuffle' ? current.shuffle : current.flam);
+
+  /** Turn one dial to a position, and say whether that changed anything.
    *
-   *  One click is one whole edit - there is no drag to accumulate, so unlike a
-   *  stroke this snapshots and reports in the same breath. Clicking the lit
-   *  lamp writes nothing: it would push an undo entry that undoes to itself
-   *  and mark a clean file unsaved. */
+   *  Landing on the position it is already in writes nothing. That matters
+   *  more here than it looks: a drag crosses the lit circle constantly, and
+   *  each crossing would otherwise rewrite the same byte and, at the end of
+   *  the gesture, mark a clean file unsaved for an edit that did nothing. */
   const turnDial = (field, value) => {
-    if ((field === 'shuffle' ? current.shuffle : current.flam) === value) return;
-    const before = payload.slice();
+    if (dialValue(field) === value) return false;
     if (field === 'shuffle') edit.setShuffle(payload, value);
     else edit.setFlamDepth(payload, value);
     current = decodePattern(payload);
-    drawReadouts();
-    onEdit?.(before);
+    const wrap = readoutBar?.querySelector(`.dial[data-dial="${field}"]`);
+    if (wrap) relightDial(wrap, field.toUpperCase(), dialValue(field));
+    return true;
   };
 
-  /* Rebuilt on its own rather than through draw(): neither dial changes a
-     single cell, and throwing away sixteen lanes to relight one lamp would
-     also drop the focus the click just put on it. */
+  /* The readouts are rebuilt whole only by draw(), which is the only thing
+     that changes what is in them - a dial turn relights its own circles in
+     place instead, so a drag or a focus ring is not thrown away mid-gesture. */
   const drawReadouts = () => {
-    const next = readouts(current, payload ? turnDial : null);
-    if (readoutBar) readoutBar.replaceWith(next);
-    else body.appendChild(next);
-    readoutBar = next;
+    readoutBar = readouts(current, Boolean(payload));
+    body.appendChild(readoutBar);
   };
 
   /* Steps past the pattern's length are printed but struck out: the chart is
@@ -375,7 +376,6 @@ export function patternChart(pattern, {
     // than folded into it: the playhead answers "where does it loop" at a
     // glance across the whole grid, but a drag is not pixel-precise, and the
     // readout is where a glance confirms the exact number landed on.
-    readoutBar = null;
     drawReadouts();
 
     if (payload) {
@@ -560,8 +560,97 @@ export function patternChart(pattern, {
       document.addEventListener('pointercancel', endLength);
     };
 
+    /* Turning a SHUFFLE or FLAM dial: press anywhere along the strip and drag.
+     *
+     * The whole strip is the control, not the eight circles in it. An 8px
+     * circle is a hard thing to hit and a harder thing to hit eight times
+     * while comparing them, and the gesture the knob these stand in for wants
+     * is a sweep - so the position is whichever circle the pointer is nearest,
+     * gaps and both ends included, and it follows the pointer until it lifts.
+     *
+     * The circles' geometry is measured once, at pointerdown: they do not move
+     * when the value changes (relightDial only repaints them), and re-reading
+     * sixteen rects on every pointermove to learn the same eight numbers is
+     * work for nothing. */
+    const positionAt = (clientX) => {
+      let best = 0;
+      let bestGap = Infinity;
+      dialDrag.bounds.forEach((centre, i) => {
+        const gap = Math.abs(clientX - centre);
+        if (gap < bestGap) {
+          bestGap = gap;
+          best = i;
+        }
+      });
+      return best;
+    };
+
+    const moveDial = (event) => {
+      if (!dialDrag) return;
+      if (turnDial(dialDrag.field, positionAt(event.clientX))) dialDrag.changed = true;
+    };
+
+    const endDial = () => {
+      if (!dialDrag) return;
+      const { changed, before } = dialDrag;
+      dialDrag = null;
+      root.classList.remove('turning');
+      document.removeEventListener('pointermove', moveDial);
+      document.removeEventListener('pointerup', endDial);
+      document.removeEventListener('pointercancel', endDial);
+      // One entry for the sweep, the same as a paint stroke or a length drag:
+      // a drag from 0 to 7 undoes as the one turn it looked like.
+      if (changed && onEdit) onEdit(before);
+    };
+
+    const beginDial = (event) => {
+      const wrap = event.target.closest?.('.dial');
+      if (!wrap || !root.contains(wrap)) return;
+      if (event.button !== undefined && event.button !== 0) return;
+      event.preventDefault();
+      const bounds = [...wrap.querySelectorAll('.lamp')].map((lamp) => {
+        const r = lamp.getBoundingClientRect();
+        return r.x + r.width / 2;
+      });
+      dialDrag = { field: wrap.dataset.dial, bounds, before: payload.slice(), changed: false };
+      root.classList.add('turning');
+      if (turnDial(dialDrag.field, positionAt(event.clientX))) dialDrag.changed = true;
+      document.addEventListener('pointermove', moveDial);
+      document.addEventListener('pointerup', endDial);
+      document.addEventListener('pointercancel', endDial);
+    };
+
+    /* The same dial from the keyboard. The circles are radio buttons, so the
+     * arrow keys are what a radio group is expected to answer to; Enter and
+     * Space land on the focused one, which is what a button is expected to do.
+     * Each keystroke is its own edit - there is no gesture to gather up. */
+    const keyDial = (event) => {
+      const wrap = event.target.closest?.('.dial');
+      if (!wrap || !root.contains(wrap)) return;
+      const field = wrap.dataset.dial;
+      const from = dialValue(field);
+      // A dial holding a byte no position stands for starts from 0, so the
+      // first arrow key moves it somewhere real rather than nowhere.
+      const here = from >= 0 && from < edit.NBR_DIAL ? from : 0;
+      let wanted;
+      if (event.key === 'ArrowLeft' || event.key === 'ArrowDown') wanted = here - 1;
+      else if (event.key === 'ArrowRight' || event.key === 'ArrowUp') wanted = here + 1;
+      else if (event.key === 'Home') wanted = 0;
+      else if (event.key === 'End') wanted = edit.NBR_DIAL - 1;
+      else if (event.key === 'Enter' || event.key === ' ') wanted = Number(event.target.dataset.pos);
+      else return;
+      event.preventDefault();
+      const clamped = Math.max(0, Math.min(edit.NBR_DIAL - 1, wanted));
+      const before = payload.slice();
+      if (!turnDial(field, clamped)) return;
+      wrap.querySelector('.lamp.on')?.focus();
+      onEdit?.(before);
+    };
+
     root.addEventListener('pointerdown', beginStroke);
     root.addEventListener('pointerdown', beginLength);
+    root.addEventListener('pointerdown', beginDial);
+    root.addEventListener('keydown', keyDial);
   }
 
   return root;
@@ -581,25 +670,61 @@ export function patternChart(pattern, {
  *  from a record the machine never wrote - a blank 0xFF slot decodes that way
  *  - so it fills nothing and prints the raw byte beside the row instead of
  *  quietly showing position 0. */
-function dial(value, name, onPick) {
+function dial(field, name, value, editable) {
   const wrap = el('div', 'dial');
-  wrap.setAttribute('role', onPick ? 'radiogroup' : 'img');
-  wrap.setAttribute('aria-label', `${name} ${value}`);
+  // The whole strip is the control, and patternChart's gesture finds it by
+  // this attribute rather than by which circle happened to be under the
+  // pointer - see turnDial and beginDial.
+  wrap.dataset.dial = field;
+  wrap.setAttribute('role', editable ? 'radiogroup' : 'img');
+  if (editable) {
+    wrap.style.touchAction = 'none';   // a drag here turns the dial, not scrolls
+    wrap.title = `${name} — click or drag along the row to turn it`;
+  }
   for (let i = 0; i < edit.NBR_DIAL; i += 1) {
-    const lamp = el(onPick ? 'button' : 'span', 'lamp');
-    if (i === value) lamp.classList.add('on');
-    if (onPick) {
+    const lamp = el(editable ? 'button' : 'span', 'lamp');
+    lamp.dataset.pos = String(i);
+    if (editable) {
       lamp.type = 'button';
       lamp.setAttribute('role', 'radio');
-      lamp.setAttribute('aria-checked', String(i === value));
       lamp.setAttribute('aria-label', `${name} ${i}`);
-      lamp.title = `${name} ${i}`;
-      lamp.addEventListener('click', () => onPick(i));
+      // The buttons are here to be focusable and to carry the radio group's
+      // state; they have no click handler of their own, because the gesture
+      // lives on the strip. Keyboard Enter/Space reaches the same code by
+      // bubbling up to it.
+      lamp.tabIndex = i === value ? 0 : -1;
     }
     wrap.appendChild(lamp);
   }
-  if (!(value >= 0 && value < edit.NBR_DIAL)) wrap.appendChild(el('span', 'dial-odd', String(value)));
+  wrap.appendChild(el('span', 'dial-odd'));
+  relightDial(wrap, name, value);
   return wrap;
+}
+
+/** Move a dial's filled circle, in place.
+ *
+ *  In place rather than by rebuilding the strip: a drag is holding a pointer
+ *  over these very elements and a keyboard is holding focus inside one, and
+ *  replacing the node mid-gesture would drop both. Nothing else about the
+ *  strip depends on the value. */
+function relightDial(wrap, name, value) {
+  wrap.setAttribute('aria-label', `${name} ${value}`);
+  const editable = wrap.getAttribute('role') === 'radiogroup';
+  for (const lamp of wrap.querySelectorAll('.lamp')) {
+    const on = Number(lamp.dataset.pos) === value;
+    lamp.classList.toggle('on', on);
+    if (editable) {
+      lamp.setAttribute('aria-checked', String(on));
+      // One stop in the tab order for the whole group, landing on the position
+      // it is set to - the arrow keys move within it.
+      lamp.tabIndex = on ? 0 : -1;
+    }
+  }
+  // A value past the last position can only come from a record the machine
+  // never wrote - a blank 0xFF slot decodes that way - so it fills no circle
+  // and prints the raw byte instead of quietly reading as position 0.
+  const odd = wrap.querySelector('.dial-odd');
+  odd.textContent = value >= 0 && value < edit.NBR_DIAL ? '' : String(value);
 }
 
 /** The boxes under the grid, where the panel prints TRACK and MODE.
@@ -610,14 +735,18 @@ function dial(value, name, onPick) {
  *  the same edge rather than at the head of the row where it reads as the
  *  first of four equal facts.
  *
- *  `onSet(field, value)` makes the two dials editable; without it every box is
- *  text, which is what a read-only chart wants. */
-function readouts(pattern, onSet = null) {
+ *  SCALE is not here: it moved up into the control bar between the bank tabs
+ *  and INST./EXT, where app.js owns it - it is picked from a short list of
+ *  divisions rather than read off, and it belongs with the other controls that
+ *  say what you are looking at.
+ *
+ *  `editable` makes the two dials editable; without it every box is text,
+ *  which is what a read-only chart wants. */
+function readouts(pattern, editable = false) {
   const wrap = el('div', 'chart-readouts');
   const boxes = [
-    ['SCALE', pattern.scaleName],
-    ['SHUFFLE', dial(pattern.shuffle, 'SHUFFLE', onSet && ((v) => onSet('shuffle', v)))],
-    ['FLAM', dial(pattern.flam, 'FLAM', onSet && ((v) => onSet('flam', v)))],
+    ['SHUFFLE', dial('shuffle', 'SHUFFLE', pattern.shuffle, editable)],
+    ['FLAM', dial('flam', 'FLAM', pattern.flam, editable)],
   ];
   if (pattern.extLength !== pattern.length) boxes.push(['EXT STEPS', String(pattern.extSteps)]);
   if (pattern.groupLength) {
@@ -636,5 +765,5 @@ function readouts(pattern, onSet = null) {
 export function chartLegend(editable = false) {
   const marks = 'loud  ■    soft  ▒    flam  ◤    beyond last step  ╱';
   if (!editable) return marks;
-  return `${marks}\nclick cycles a step  ·  drag along a lane to lay down a run  ·  shift for flam  ·  drag LAST STEP to change the pattern's length  ·  click a SHUFFLE or FLAM circle to turn that dial`;
+  return `${marks}\nclick cycles a step  ·  drag along a lane to lay down a run  ·  shift for flam  ·  drag LAST STEP to change the pattern's length  ·  click or drag along the SHUFFLE and FLAM dials to turn them`;
 }

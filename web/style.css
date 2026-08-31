@@ -518,6 +518,52 @@ pre.log .bad::before { content: "! "; }
 }
 .control-bar .chart-tabs { margin-bottom: 0; border-bottom: none; }
 .control-bar .bank-buttons { flex: none; }
+
+/* SCALE, between the two tab strips. Deliberately not a tab: the banks and
+   views open onto the surface below and take its colour, and SCALE does not -
+   it sets a property of the pattern already on that surface. So it is a
+   segmented control sitting on the bar rather than a folder tab breaking the
+   rule, and the chosen division is an invert, which is how GEM said "this
+   one". */
+.seg {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  flex: none;
+  margin-bottom: 2px;
+  border: 1px solid var(--ink);
+  background: var(--paper);
+}
+.seg-label {
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  padding: 0 6px;
+  opacity: 0.75;
+  border-right: 1px solid var(--ink);
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+}
+.seg-btn {
+  appearance: none;
+  background: var(--paper);
+  border: none;
+  border-left: 1px solid var(--ink);
+  color: var(--ink);
+  font: inherit;
+  font-size: 11px;
+  padding: 1px 7px;
+  cursor: pointer;
+}
+.seg-btn:first-of-type { border-left: none; }
+.seg-btn:hover:not(:disabled):not([aria-checked="true"]) { background: var(--face); }
+.seg-btn[aria-checked="true"] { background: var(--ink); color: var(--paper); }
+.seg-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+/* currentColor, not --ink: the chosen division is inverted, and a black ring
+   inside a black button is no ring at all. */
+.seg-btn:focus-visible { outline: 1px solid currentColor; outline-offset: -3px; }
+/* Only a record the machine never wrote gets here - see refreshScalePicker. */
+.seg-odd { font-size: 10px; padding: 0 6px; border-left: 1px solid var(--ink); }
 .chart-tab {
   background: var(--face-dim);
   border: 1px solid var(--ink);
@@ -690,9 +736,25 @@ td.cell.editable.loud:hover { box-shadow: inset 0 0 0 2px var(--paper); }
    here against a rulebook that rounds nothing, because these are the one thing
    on this page that is not GEM furniture: they are the machine's own indicator
    lamps, and a lamp is a circle. Filled is the position the dial is on. */
-/* align-self, because .readout aligns its children on the baseline and a row
+/* The strip is the control, not the eight circles on it: the padding is the
+   slack that makes a press between two circles, or above and below the row,
+   land on the dial rather than on nothing. grid.js hit-tests the pointer's x
+   against the circle centres, so the gaps belong to whichever is nearer.
+
+   align-self, because .readout aligns its children on the baseline and a row
    of circles has no text in it to have one. */
-.dial { display: flex; gap: 3px; align-items: center; align-self: center; }
+.dial {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  align-self: center;
+  padding: 4px 2px;
+  margin: -4px 0;   /* the slack must not make the readout box taller */
+}
+.chart.editable .dial { cursor: pointer; }
+/* Mid-drag the pointer is sweeping the dial, so the browser must not decide it
+   is selecting the labels either side of it. */
+.chart.turning { user-select: none; }
 .lamp {
   appearance: none;   /* a <button> otherwise arrives with the UA's own face on it */
   width: 8px;
@@ -702,15 +764,16 @@ td.cell.editable.loud:hover { box-shadow: inset 0 0 0 2px var(--paper); }
   border: 1px solid var(--ink);
   border-radius: 50%;
   background: var(--paper);
+  /* The circle is a mark on the strip, not a target of its own - the strip
+     under it takes the press, and hands it to the nearest circle. */
+  pointer-events: none;
 }
 .lamp.on { background: var(--ink); }
-button.lamp { cursor: pointer; }
-/* Half-filled on hover, so the pointer previews which detent it would land on
-   without being mistaken for the one already lit. */
-button.lamp:hover:not(.on) { background: var(--face); }
+/* pointer-events does not reach the keyboard, so the circle is still the radio
+   focus lands on and still shows where the keyboard is. */
 button.lamp:focus-visible { outline: 1px solid var(--ink); outline-offset: 2px; }
-/* Only ever seen on a record the machine never wrote - see dial() in grid.js. */
-.dial-odd { margin-left: 4px; font-size: 11px; }
+/* Only ever seen on a record the machine never wrote - see relightDial(). */
+.dial-odd:not(:empty) { margin-left: 4px; font-size: 11px; }
 
 /* A GEM progress bar: solid ink filling a white trough, no animation. */
 progress {
