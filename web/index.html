@@ -97,10 +97,15 @@
         <div class="buttons">
           <button id="save-file" class="btn"><u>S</u>ave…</button>
         </div>
-        <!-- The one entry Contents used to carry that a bank/pattern picker
-             cannot: the setup record. Always present for a backup, disabled
-             when it has none - app.js flips that per file. -->
-        <button id="config-entry" class="btn config-btn" type="button" disabled>config / setup</button>
+      </fieldset>
+      <!-- The setup record: the one thing in a backup a bank/pattern picker
+           cannot reach. It used to be a button here that swapped the Detail
+           pane over to it; it is its own window now, so it can be read
+           alongside the pattern rather than instead of it. Hidden entirely for
+           a file that carries no config record - see refreshConfigPanel. -->
+      <fieldset id="config-group" class="group col-config" hidden>
+        <legend>Config / setup</legend>
+        <pre id="config-view" class="paper"></pre>
       </fieldset>
       <fieldset class="group col-detail">
         <legend>Detail</legend>

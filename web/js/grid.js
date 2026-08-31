@@ -372,7 +372,12 @@ export function patternChart(pattern, {
     // nothing.
     const gridWrap = el('div', 'chart-grid-wrap');
     gridWrap.appendChild(table);
-    const boundary = `calc(var(--corner) + (100% - var(--corner)) * ${steps} / 16)`;
+    // Clamped an inch inside the right edge. At LAST STEP 16 the boundary is
+    // the grid's own right edge, and the rule straddles it - half of a 2px
+    // line hanging outside the chart, which is all .chart's overflow-x needs
+    // to grow a horizontal scrollbar over a pixel of nothing. One pixel in,
+    // the rule still lands on the grid's own border, where it reads the same.
+    const boundary = `min(calc(var(--corner) + (100% - var(--corner)) * ${steps} / 16), 100% - 1px)`;
     const playhead = el('div', 'playhead');
     playhead.style.left = boundary;
     gridWrap.appendChild(playhead);
@@ -855,9 +860,11 @@ function relightScale(wrap, value) {
 function readouts(pattern, editable = false) {
   const wrap = el('div', 'chart-readouts');
   const boxes = [
-    ['SHUFFLE', dial('shuffle', 'SHUFFLE', pattern.shuffle, editable)],
-    ['FLAM', dial('flam', 'FLAM', pattern.flam, editable)],
-    ['SCALE', scalePicker(pattern.scale, editable)],
+    ['SHUFFLE', dial('shuffle', 'SHUFFLE', pattern.shuffle, editable), 'readout readout-control'],
+    ['FLAM', dial('flam', 'FLAM', pattern.flam, editable), 'readout readout-control'],
+    // No box of its own: the divisions are already a bordered strip, and a
+    // second rule around them was a box drawn around a box.
+    ['SCALE', scalePicker(pattern.scale, editable), 'readout readout-control readout-bare readout-mid'],
   ];
   if (pattern.extLength !== pattern.length) boxes.push(['EXT STEPS', String(pattern.extSteps)]);
   if (pattern.groupLength) {
