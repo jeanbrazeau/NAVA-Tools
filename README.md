@@ -23,11 +23,18 @@ decoding a backup works either way.
 
 ## The web app
 
-Four panels, in the order the work usually happens.
+Three panels, in the order the work usually happens: pick the ports and flash if
+you are flashing, move the data, then look at what came back.
 
-**Device** picks the MIDI in and out ports. They are remembered by name in the
-browser, not by index — an index moves whenever a USB device is added or
-removed, and a remembered index would silently point at a different device.
+**Device** picks the MIDI in and out ports, and flashes. The ports are
+remembered by name in the browser, not by index — an index moves whenever a USB
+device is added or removed, and a remembered index would silently point at a
+different device.
+
+Each panel carries the state the unit has to be in for what that panel does —
+bootloader mode on Device, beside the Flash controls; the SysEx config page on
+Transfer, beside Dump and Restore. In one box together they were half
+instructions for a tab you were not on.
 
 **Browse** takes `.syx` files dropped on it and draws a pattern as the chart
 printed on the machine: the voices down the left in the panel's own order, the

@@ -31,9 +31,11 @@
        button sit beside it rather than inside it. -->
   <div class="shell-head">
     <nav class="tabs" role="tablist">
+      <!-- The order the work usually happens in: pick the ports, move the data,
+           then look at what came back. -->
       <button role="tab" aria-selected="true" aria-controls="panel-device" id="tab-device"><u>D</u>EVICE</button>
-      <button role="tab" aria-selected="false" aria-controls="panel-browse" id="tab-browse"><u>B</u>ROWSE</button>
       <button role="tab" aria-selected="false" aria-controls="panel-transfer" id="tab-transfer"><u>T</u>RANSFER</button>
+      <button role="tab" aria-selected="false" aria-controls="panel-browse" id="tab-browse"><u>B</u>ROWSE</button>
     </nav>
     <div class="shell-status">
       <button id="enable-midi" class="btn default">Enable MIDI</button>
@@ -61,15 +63,12 @@
       </fieldset>
     </div>
 
+    <!-- Each panel carries the state the unit has to be in for what that panel
+         does: the bootloader note here, beside the Flash controls, and the
+         SysEx page note on Transfer beside Dump and Restore. Together in one
+         box they were half instructions for a tab you were not on. -->
     <fieldset class="group">
       <legend>What the unit has to be doing</legend>
-      <p>
-        <strong>Backup and restore</strong> need the unit stopped and on the SysEx
-        config page: <kbd>SHIFT</kbd> + <kbd>TEMPO</kbd> to <code>type / select</code>.
-        That is where the firmware listens; anywhere else, requests are ignored.
-        Entering the page flushes pending edits to EEPROM and leaving it reloads
-        the current bank, so a restore takes effect without a power cycle.
-      </p>
       <p>
         <strong>Flashing</strong> needs the unit in bootloader mode: hold steps
         <kbd>1</kbd>, <kbd>3</kbd> and <kbd>5</kbd> while powering it on. The
@@ -103,6 +102,49 @@
       <legend>Progress</legend>
       <progress id="firmware-progress" value="0" max="1"></progress>
       <pre id="firmware-log" class="paper log"></pre>
+    </fieldset>
+  </section>
+
+  <section id="panel-transfer" role="tabpanel" aria-labelledby="tab-transfer" hidden>
+
+    <fieldset class="group">
+      <legend>What the unit has to be doing</legend>
+      <p>
+        <strong>Backup and restore</strong> need the unit stopped and on the SysEx
+        config page: <kbd>SHIFT</kbd> + <kbd>TEMPO</kbd> to <code>type / select</code>.
+        That is where the firmware listens; anywhere else, requests are ignored.
+        Entering the page flushes pending edits to EEPROM and leaving it reloads
+        the current bank, so a restore takes effect without a power cycle.
+      </p>
+    </fieldset>
+
+    <div class="row">
+      <fieldset class="group">
+        <legend>Dump: <span class="muted">Nava → file</span></legend>
+        <label class="field">Patterns
+          <input id="dump-patterns" value="all" spellcheck="false" placeholder="all, C, A1-A16">
+        </label>
+        <label class="field">Tracks
+          <input id="dump-tracks" value="all" spellcheck="false" placeholder="all, 1-4">
+        </label>
+        <label class="check"><input id="dump-config" type="checkbox" checked> Config record</label>
+        <div class="buttons"><button id="do-dump" class="btn default">Dump</button></div>
+      </fieldset>
+
+      <fieldset class="group">
+        <legend>Restore: <span class="muted">file → Nava</span></legend>
+        <label class="field">Backup
+          <select id="restore-file"><option value="">— load a .syx under Browse —</option></select>
+        </label>
+        <p class="muted">Overwrites the patterns, tracks and setup the file names. Not reversible.</p>
+        <div class="buttons"><button id="do-restore" class="btn">Restore</button></div>
+      </fieldset>
+    </div>
+
+    <fieldset class="group">
+      <legend>Progress</legend>
+      <progress id="transfer-progress" value="0" max="1"></progress>
+      <pre id="transfer-log" class="paper log"></pre>
     </fieldset>
   </section>
 
@@ -170,38 +212,6 @@
         <p id="legend" class="muted"></p>
       </fieldset>
     </div>
-  </section>
-
-  <section id="panel-transfer" role="tabpanel" aria-labelledby="tab-transfer" hidden>
-
-    <div class="row">
-      <fieldset class="group">
-        <legend>Dump: <span class="muted">Nava → file</span></legend>
-        <label class="field">Patterns
-          <input id="dump-patterns" value="all" spellcheck="false" placeholder="all, C, A1-A16">
-        </label>
-        <label class="field">Tracks
-          <input id="dump-tracks" value="all" spellcheck="false" placeholder="all, 1-4">
-        </label>
-        <label class="check"><input id="dump-config" type="checkbox" checked> Config record</label>
-        <div class="buttons"><button id="do-dump" class="btn default">Dump</button></div>
-      </fieldset>
-
-      <fieldset class="group">
-        <legend>Restore: <span class="muted">file → Nava</span></legend>
-        <label class="field">Backup
-          <select id="restore-file"><option value="">— load a .syx under Browse —</option></select>
-        </label>
-        <p class="muted">Overwrites the patterns, tracks and setup the file names. Not reversible.</p>
-        <div class="buttons"><button id="do-restore" class="btn">Restore</button></div>
-      </fieldset>
-    </div>
-
-    <fieldset class="group">
-      <legend>Progress</legend>
-      <progress id="transfer-progress" value="0" max="1"></progress>
-      <pre id="transfer-log" class="paper log"></pre>
-    </fieldset>
   </section>
 
 

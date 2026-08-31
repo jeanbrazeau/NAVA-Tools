@@ -1,5 +1,5 @@
-/* The page. Four panels in the order the work usually happens: pick a port,
- * look at what you have, move data, flash firmware.
+/* The page. Three panels in the order the work usually happens: pick the ports
+ * and flash if you are flashing, move the data, then look at what came back.
  *
  * Everything a MIDI operation touches is async, so "busy" is a single flag
  * rather than a worker thread: the transfer loops await and the UI keeps
