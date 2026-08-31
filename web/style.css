@@ -1061,7 +1061,12 @@ dialog::backdrop {
 
 @media (max-width: 760px) {
   .row { flex-direction: column; }
-  .row > * { width: 100%; }
+  /* flex: none, because the basis on .row > * is 20rem and a basis is measured
+     along the main axis - which this rule has just turned vertical. Left as it
+     is, every box in a stacked row is 20rem TALL before it holds anything, so
+     a port list with one port in it stood 256px high around 17px of content.
+     Stacked, the boxes should be exactly as tall as what is in them. */
+  .row > * { width: 100%; flex: none; }
   /* One column, and the setup record moves to the bottom - under the pattern
      editor rather than above it. See .browse-row. */
   .browse-row {
