@@ -6,6 +6,25 @@
  * having a .syx already. `nava build` still exists for anyone with a firmware
  * checkout and PlatformIO.
  *
+ * ONE THING THE CLI DOES NOT HAVE TO WORK AROUND: a release asset cannot be
+ * fetched cross-origin. api.github.com answers with
+ * `access-control-allow-origin: *`, so looking a release up works; the asset
+ * itself - the 302 from github.com and the release-assets.githubusercontent.com
+ * response it points at - carries no such header, so `fetch` on it fails with a
+ * bare "Failed to fetch" in every browser. There is no header to ask for and no
+ * endpoint that behaves differently; a CORS proxy is the usual answer and is
+ * the wrong one for a page that flashes firmware.
+ *
+ * So there are two paths, in this order:
+ *
+ *   1. The copy deployed beside this page (`firmware/index.json`), which the
+ *      Pages workflow downloads at deploy time where no CORS applies. Same
+ *      origin, one click, no third party involved at all.
+ *   2. Anything else - an older tag, a fork, a release cut since the last
+ *      deploy - hands off to an ordinary browser download and asks for the file
+ *      back. GitHub serves assets as `Content-Disposition: attachment`, so a
+ *      plain navigation downloads it and leaves the page alone.
+ *
  * Unauthenticated requests, deliberately: the releases of a public repository
  * need no token, and GitHub's 60-per-hour limit is not a constraint for a
  * button a person presses by hand. There is nowhere safe to put a token in a
@@ -130,29 +149,33 @@ async function byTitle(wanted, repo) {
   return null;
 }
 
-/** Fetch an asset's bytes, reporting progress as they arrive.
+/** What the Pages workflow deployed beside this page, or null if there is none.
  *
- * GitHub serves release assets with `access-control-allow-origin: *`, so a
- * static page can read them. When that fails anyway - a proxy stripping the
- * header, an extension blocking the request - the error names the direct link,
- * because downloading it by hand and dropping the file in is a complete
- * workaround rather than a dead end.
- */
-export async function downloadAsset(asset, onProgress) {
-  let response;
+ * Absent on a local `python3 -m http.server`, and absent on the very first
+ * deploy of a repository whose firmware has no releases yet, so a missing or
+ * unparseable manifest is a plain "no bundled image" rather than an error. */
+export async function bundled() {
   try {
-    response = await fetch(asset.url);
-  } catch (error) {
-    throw new ReleaseError(
-      `could not download ${asset.name} (${error.message ?? error}). ` +
-        `Download it from ${asset.url} and drop the file on this page instead.`,
-    );
+    const response = await fetch('firmware/index.json', { cache: 'no-cache' });
+    if (!response.ok) return null;
+    const manifest = await response.json();
+    return manifest && manifest.file && manifest.tag ? manifest : null;
+  } catch {
+    return null;
   }
-  if (!response.ok) {
-    throw new ReleaseError(`GitHub returned ${response.status} downloading ${asset.name}`);
-  }
+}
 
-  const total = Number(response.headers.get('Content-Length')) || asset.size || 0;
+/** The bundled image's bytes. Same origin, so this is an ordinary fetch. */
+export async function downloadBundled(manifest, onProgress) {
+  const response = await fetch(`firmware/${manifest.file}`);
+  if (!response.ok) {
+    throw new ReleaseError(`the deployed copy of ${manifest.file} is missing (${response.status})`);
+  }
+  return readBody(response, manifest.size ?? 0, manifest.file, onProgress);
+}
+
+async function readBody(response, expected, name, onProgress) {
+  const total = Number(response.headers.get('Content-Length')) || expected || 0;
   if (!response.body) return new Uint8Array(await response.arrayBuffer());
 
   const reader = response.body.getReader();
@@ -163,7 +186,7 @@ export async function downloadAsset(asset, onProgress) {
     if (finished) break;
     chunks.push(value);
     done += value.length;
-    if (onProgress) onProgress(done, total || done, asset.name);
+    if (onProgress) onProgress(done, total || done, name);
   }
 
   const out = new Uint8Array(done);
@@ -173,4 +196,21 @@ export async function downloadAsset(asset, onProgress) {
     offset += chunk.length;
   }
   return out;
+}
+
+/** Hand an asset to the browser's own downloader.
+ *
+ * Not a fetch: see the CORS note at the top of this file. GitHub serves release
+ * assets as `Content-Disposition: attachment`, so navigating to one downloads
+ * it and leaves this page where it is - which is the whole reason this works
+ * where reading the bytes does not.
+ */
+export function handOffToBrowser(asset) {
+  const anchor = document.createElement('a');
+  anchor.href = asset.url;
+  anchor.rel = 'noopener';
+  // `download` is ignored cross-origin, but naming it costs nothing and is
+  // honoured if GitHub ever serves these same-origin.
+  anchor.download = asset.name;
+  anchor.click();
 }

@@ -106,7 +106,7 @@ def cmd_flash(args) -> int:
     print(f"{args.syxfile}: {len(image)} bytes of flash in {len(messages) - 1} pages")
     print(
         "The Nava must already be in bootloader mode "
-        "(stop the sequencer, SHIFT+TEMPO to the BOOTLOADER page, press the encoder)."
+        "(hold steps 1, 3 and 5 while powering it on)."
     )
 
     with midiio.open_ports(out_spec=args.out) as ports:

@@ -1,259 +1,782 @@
-/* One stylesheet, no framework. The page is a instrument-panel utility, not a
- * document: fixed-width type for anything that is data, a colour per state, and
- * enough contrast to read next to a drum machine under stage light. */
+/* Atari TOS / GEM.
+ *
+ * The rules that make it read as GEM rather than as "flat design with square
+ * corners": black and white do all the work and the greys only sit things
+ * behind others, every edge is one hard black pixel, nothing is rounded,
+ * nothing has a gradient, and the only depth cue is a solid black drop shadow
+ * offset down-right. Selection is an invert, not a tint.
+ *
+ * The desktop behind the dialogs is the 50% dither - a 2px checkerboard, which
+ * is how a 1-bit display made grey and why GEM looks the way it does.
+ */
 
 :root {
-  color-scheme: dark light;
-  --bg: #0e0f11;
-  --panel: #17191d;
-  --panel-2: #1e2126;
-  --line: #2b2f36;
-  --text: #dfe3e8;
-  --muted: #8b93a0;
-  --accent: #ff7a1a;
-  --danger: #e0524a;
-  --ok: #4fbf72;
-  --mono: ui-monospace, "SF Mono", "Cascadia Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+  color-scheme: light only;
+  --ink: #000;
+  --paper: #fff;
+  --face: #cfcfcf;   /* dialog fill */
+  --face-dim: #b3b3b3;  /* the unchosen tabs, one step back from the face */
+  --shadow: 3px 3px 0 var(--ink);
+  /* The step chart's label column width - read by both .chart-corner (so the
+     grid actually has that column that wide) and the LAST STEP playhead's
+     inline `left` (so it lands on the same column boundaries without
+     measuring the table, which would come back as 0 before the chart is
+     inserted into the page). One number, not two kept in sync by hand. */
+  --corner: 7.4rem;
+  /* One PATTERN button, and with it the grid: sixteen buttons and the step
+     grid are the same object seen two ways, so they are sized from the same
+     number and end on the same line. The grid gets a height rather than a row
+     height, because INST. has thirteen lanes and EXT sixteen - fixing the row
+     height would leave INST. three rows short of the column it sits beside. */
+  --pattern-step: 22px;
+  --ruler: 10px;            /* the numberless band the playhead handle sits in */
+  --grid-height: calc(var(--pattern-step) * 16);
+  --font: ui-monospace, "SF Mono", Menlo, Consolas, "DejaVu Sans Mono", monospace;
+  --dither: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='2' height='2' shape-rendering='crispEdges'%3E%3Crect width='1' height='1'/%3E%3Crect x='1' y='1' width='1' height='1'/%3E%3C/svg%3E");
 }
 
 * { box-sizing: border-box; }
 
+/* Any rule setting `display` on a tag or class outranks the user agent's
+   [hidden] rule, so a hidden element renders anyway. That has now bitten the
+   tab panels (`section`) and the alert box (`.alert`); one global rule is the
+   fix, rather than remembering a guard per component. */
+[hidden] { display: none !important; }
+
 body {
   margin: 0;
-  background: var(--bg);
-  color: var(--text);
-  font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
-}
-
-.bar {
+  min-height: 100vh;
   display: flex;
-  align-items: center;
-  gap: 1rem;
-  padding: 0.7rem 1.2rem;
-  background: var(--panel);
-  border-bottom: 1px solid var(--line);
+  flex-direction: column;
+  color: var(--ink);
+  font: 13px/1.45 var(--font);
+  letter-spacing: 0.02em;
+  /* The 50% dither: two colours in a 2px checkerboard, which is how a 1-bit
+     display made grey. Drawn as an SVG rather than a conic gradient because a
+     gradient gets antialiased into mush at this size, and the whole point is
+     that the pixels are hard. */
+  background-color: var(--paper);
+  background-image: var(--dither);
+  background-size: 2px 2px;
+  -webkit-font-smoothing: none;
+  font-smooth: never;
 }
 
-footer.bar {
+/* ---------- window title ---------- */
+
+/* The title bar spans the dialog, so it needs the padding pulled back off it. */
+.titlebar {
+  margin: -14px -16px 12px;
+  padding: 3px 10px;
+  background: var(--paper);
+  border-bottom: 1px solid var(--ink);
+  text-align: center;
+}
+.titlebar span {
+  letter-spacing: 0.14em;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+/* ---------- the dialog header ---------- */
+
+/* Panel names on the left, MIDI accessories on the right, sharing one baseline
+   rule that runs the width of the dialog. */
+.shell-head {
+  display: flex;
+  align-items: flex-end;
+  gap: 14px;
+  margin: -2px -2px 14px;
+  border-bottom: 1px solid var(--ink);
+}
+
+/* The chosen tab is left the colour of the dialog face, so it joins the panel
+   below it through the gap in the header rule - which is what a folder tab is.
+   The unchosen ones sit one step back in a dimmer grey: enough to read as
+   behind rather than beside, without the hard invert drawing the eye to
+   whichever tab you are not looking at. */
+.tabs { display: flex; gap: 4px; }
+.tabs button[role="tab"] {
+  background: var(--face-dim);
+  border: 1px solid var(--ink);
   border-bottom: none;
-  border-top: 1px solid var(--line);
-  position: sticky;
-  bottom: 0;
-  min-height: 3rem;
+  color: var(--ink);
+  font: inherit;
+  letter-spacing: 0.08em;
+  padding: 3px 16px;
+  cursor: pointer;
+  /* An unchosen tab rests on the header rule, so the line reads as its closed
+     bottom edge. */
+  position: relative;
+  top: 0;
+}
+.tabs button[role="tab"]:hover:not([aria-selected="true"]) {
+  background: var(--paper);
+  color: var(--ink);
+}
+/* The chosen tab drops one pixel to cover the rule, which opens it into the
+   panel below. That break in the line - not the grey - is what says which tab
+   is chosen; one step of lightness alone is too quiet to carry it. */
+.tabs button[role="tab"][aria-selected="true"] {
+  background: var(--face);
+  color: var(--ink);
+  top: 1px;
 }
 
-h1 {
-  margin: 0;
-  font: 700 1.3rem/1 var(--mono);
-  letter-spacing: 0.04em;
-  color: var(--accent);
-}
-
-.tagline { margin: 0; color: var(--muted); font-size: 0.9rem; }
-
-.bar-right {
+.shell-status {
   margin-left: auto;
   display: flex;
   align-items: center;
-  gap: 0.7rem;
+  gap: 10px;
+  padding-bottom: 5px;
 }
 
-.pill {
-  font: 0.8rem var(--mono);
-  padding: 0.25rem 0.6rem;
-  border-radius: 999px;
-  border: 1px solid var(--line);
-  color: var(--muted);
-  white-space: nowrap;
-}
-.pill-ok { color: var(--ok); border-color: var(--ok); }
-.pill-warn { color: var(--accent); border-color: var(--accent); }
-.pill-idle { color: var(--muted); }
+.pill { white-space: nowrap; }
+.pill-ok::before { content: "\2666  "; }     /* filled diamond: ports ready */
+.pill-warn::before { content: "\25C7  "; }   /* hollow diamond: half ready */
+.pill-idle::before { content: "\25C7  "; }
 
-.banner {
-  margin: 0;
-  padding: 0.8rem 1.2rem;
-  background: #2a1d10;
-  border-bottom: 1px solid var(--accent);
-  font-size: 0.9rem;
+/* ---------- dialogs ---------- */
+
+main {
+  flex: 1;
+  padding: 18px;
+  max-width: 1200px;
+  width: 100%;
+  margin-inline: auto;
 }
 
-.tabs {
+.dialog {
+  background: var(--face);
+  border: 1px solid var(--ink);
+  box-shadow: var(--shadow);
+  padding: 14px 16px 16px;
+}
+
+
+/* All four panels occupy one grid cell, so the dialog is sized by the largest
+   of them and stops resizing as you switch tabs - which a centred dialog makes
+   very visible, since a change in either dimension moves the whole box.
+   Sizing it from the panels themselves rather than from a hardcoded width and
+   height means it stays right when a panel gains a control.
+
+   This is the one deliberate exception to the global `[hidden]` rule above: the
+   inactive panels have to keep taking up space to do the sizing. `visibility:
+   hidden` still takes them out of the accessibility tree and off the tab order,
+   so `hidden` remains true in every sense but the one being borrowed. */
+.panels { display: grid; }
+.panels > section { grid-area: 1 / 1; }
+.panels > section[hidden] {
+  display: block !important;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.row {
   display: flex;
-  gap: 0;
-  padding: 0 1.2rem;
-  background: var(--panel);
-  border-bottom: 1px solid var(--line);
+  gap: 14px;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  margin-bottom: 14px;
 }
+.row:last-child { margin-bottom: 0; }
+.row > * { flex: 1 1 20rem; min-width: 15rem; }
 
-.tabs button {
-  background: none;
-  border: none;
-  border-bottom: 2px solid transparent;
-  color: var(--muted);
-  font: 600 0.95rem/1 system-ui, sans-serif;
-  padding: 0.75rem 1rem;
+/* The chart is the reason this panel exists, so it gets the room: the file
+   list is a picker and stops being more useful past its content width. */
+.browse-row > .col-files { flex: 0 1 15rem; }
+.browse-row > .col-detail { flex: 4 1 34rem; }
+
+/* GEM group boxes: a hairline rectangle with the label sitting on the edge. */
+fieldset.group {
+  border: 1px solid var(--ink);
+  padding: 10px 12px 12px;
+  margin: 0 0 14px;
+  min-width: 0;
+}
+section > fieldset.group:last-child { margin-bottom: 0; }
+fieldset.group legend {
+  padding: 0 6px;
+  background: var(--face);
+}
+fieldset.group p { margin: 0 0 8px; }
+fieldset.group p:last-child { margin-bottom: 0; }
+
+.hint { margin: 0 0 14px; }
+.muted { opacity: 0.72; }
+
+/* ---------- radio lists (the port pickers) ---------- */
+
+.radios {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 15rem;
+  overflow: auto;
+}
+.radios li {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  padding: 1px 2px;
   cursor: pointer;
 }
-.tabs button[aria-selected="true"] { color: var(--text); border-bottom-color: var(--accent); }
-.tabs button:hover { color: var(--text); }
-
-main { padding: 1.2rem; max-width: 1400px; }
-
-section { display: flex; flex-direction: column; gap: 1rem; }
-
-h2 {
-  margin: 0 0 0.4rem;
-  font: 600 0.95rem/1.2 system-ui, sans-serif;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--muted);
+/* The GEM radio: a hollow diamond that gains a solid centre when chosen. */
+.radios li::before {
+  content: "";
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border: 1px solid var(--ink);
+  transform: rotate(45deg);
+  position: relative;
+  top: -1px;
 }
-h2 small { text-transform: none; letter-spacing: 0; font-weight: 400; opacity: 0.7; }
+.radios li[aria-selected="true"]::before { background: var(--ink); }
+.radios li:hover { text-decoration: underline; }
+.radios li > span:first-of-type { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.radios li .sub { margin-left: auto; padding-left: 10px; opacity: 0.7; white-space: nowrap; }
+.radios li.empty { cursor: default; opacity: 0.7; }
+.radios li.empty::before { visibility: hidden; }
+.radios li.empty:hover { text-decoration: none; }
 
-.columns { display: flex; gap: 1.2rem; flex-wrap: wrap; align-items: flex-start; }
-.column {
-  flex: 1 1 20rem;
-  min-width: 16rem;
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  padding: 1rem;
+/* ---------- list boxes (files, contents) ---------- */
+
+.listbox {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  background: var(--paper);
+  border: 1px solid var(--ink);
+  min-height: 8rem;
+  max-height: 20rem;
+  overflow: auto;
 }
-.column.narrow { flex: 0 1 15rem; }
-.column.grow { flex: 3 1 30rem; }
-.columns.browse { align-items: stretch; }
+.listbox li {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 2px 5px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+/* One row per entry, always. A wrapped filename turns a list box into a
+   paragraph and the inverted selection stops reading as a row. Whatever gets
+   truncated, the full text is on the row's title. */
+#files li > span {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* Selection inverts. On a 1-bit display it was the only thing it could do, and
+   it is still the least ambiguous way to say "this row". */
+.listbox li[aria-selected="true"] { background: var(--ink); color: var(--paper); }
+.listbox li:hover:not([aria-selected="true"]) { text-decoration: underline; }
+.listbox li .sub { opacity: 0.7; text-align: right; }
+.listbox li[aria-selected="true"] .sub { opacity: 0.85; }
+.listbox li.empty { cursor: default; opacity: 0.7; }
+.listbox li.empty:hover { text-decoration: none; }
 
-.hint, .muted { color: var(--muted); font-size: 0.88rem; }
-.hint { margin: 0; }
-.mono { font-family: var(--mono); }
+/* ---------- fields ---------- */
 
-label { display: block; margin-bottom: 0.7rem; color: var(--muted); font-size: 0.85rem; }
-label.check { display: flex; align-items: center; gap: 0.4rem; }
+label.field { display: block; margin-bottom: 9px; }
 
 input[type="text"], input:not([type]), select {
   display: block;
   width: 100%;
-  margin-top: 0.25rem;
-  background: var(--panel-2);
-  border: 1px solid var(--line);
-  border-radius: 4px;
-  color: var(--text);
-  font: 0.9rem var(--mono);
-  padding: 0.45rem 0.6rem;
+  margin-top: 3px;
+  background: var(--paper);
+  border: 1px solid var(--ink);
+  border-radius: 0;
+  color: var(--ink);
+  font: inherit;
+  padding: 3px 5px;
 }
-input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+select { appearance: none; padding-right: 22px;
+  /* The GEM popup arrow, drawn rather than fetched. */
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='9' height='6'%3E%3Cpath d='M0 0h9L4.5 6z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 6px center;
+}
+input:focus, select:focus, .btn:focus-visible {
+  outline: 1px solid var(--ink);
+  outline-offset: 1px;
+}
 
-button {
-  background: var(--panel-2);
-  border: 1px solid var(--line);
-  border-radius: 4px;
-  color: var(--text);
-  font: 600 0.9rem system-ui, sans-serif;
-  padding: 0.45rem 0.9rem;
+label.check { display: flex; align-items: center; gap: 7px; margin-bottom: 9px; cursor: pointer; }
+input[type="checkbox"] {
+  appearance: none;
+  width: 11px;
+  height: 11px;
+  margin: 0;
+  border: 1px solid var(--ink);
+  background: var(--paper);
+  display: grid;
+  place-content: center;
   cursor: pointer;
 }
-button:hover:not(:disabled) { border-color: var(--muted); }
-button:disabled { opacity: 0.45; cursor: not-allowed; }
-button.primary { background: var(--accent); border-color: var(--accent); color: #16130f; }
-button.danger { background: var(--danger); border-color: var(--danger); color: #fff; }
-button.ghost { background: none; }
-button.link {
-  background: none; border: none; padding: 0;
-  color: var(--accent); text-decoration: underline; font-weight: 600;
+input[type="checkbox"]:checked::before {
+  content: "\2715";           /* the GEM tick is an x */
+  font-size: 9px;
+  line-height: 1;
 }
 
-a { color: var(--accent); }
+/* ---------- buttons ---------- */
 
-.ports {
-  list-style: none;
-  margin: 0;
+.btn {
+  background: var(--face);
+  border: 1px solid var(--ink);
+  border-radius: 0;
+  color: var(--ink);
+  font: inherit;
+  padding: 3px 14px;
+  cursor: pointer;
+}
+.btn:hover:not(:disabled) { background: var(--paper); }
+.btn:active:not(:disabled) { background: var(--ink); color: var(--paper); }
+/* The default button carries a second rule around it, which is how GEM said
+   "this is what Return does". */
+.btn.default { box-shadow: 0 0 0 1px var(--face), 0 0 0 2px var(--ink); margin: 2px; }
+.btn.small { padding: 1px 9px; }
+/* A glyph-only button (undo/redo): square rather than padded to a word's
+   width, and big enough - GEM or not - to stay a comfortable click target. */
+.btn.icon {
+  width: 22px;
+  height: 22px;
   padding: 0;
-  max-height: 22rem;
-  overflow: auto;
-  border: 1px solid var(--line);
-  border-radius: 4px;
-  background: var(--panel-2);
+  display: grid;
+  place-content: center;
+  font-size: 13px;
+  line-height: 1;
 }
-.ports li {
-  padding: 0.4rem 0.6rem;
-  font: 0.85rem var(--mono);
-  border-bottom: 1px solid var(--line);
-  cursor: pointer;
+.btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+.buttons { display: flex; gap: 10px; margin-top: 10px; }
+
+a { color: var(--ink); }
+u { text-decoration-thickness: 1px; text-underline-offset: 2px; }
+
+/* The Detail pane's own header: the filename (and item, once one is picked)
+   on the left, undo/redo on the right - one line shared by the chart and the
+   plain-text view below it, so the buttons neither vanish for a track/config
+   item nor get rebuilt away every time the chart redraws. */
+.detail-head {
   display: flex;
+  align-items: center;
   justify-content: space-between;
-  gap: 0.6rem;
+  gap: 10px;
+  margin-bottom: 8px;
 }
-.ports li:last-child { border-bottom: none; }
-.ports li:hover { background: #23262c; }
-.ports li[aria-selected="true"] { background: #2c2013; color: var(--accent); }
-.ports li .sub { color: var(--muted); font-size: 0.78rem; }
-.ports li.empty { color: var(--muted); cursor: default; }
-.ports li.empty:hover { background: none; }
+.detail-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.detail-actions { display: flex; gap: 4px; flex: none; }
 
-.dropzone {
-  border: 1px dashed var(--line);
-  border-radius: 6px;
-  padding: 1rem;
+/* ---------- Detail: bank / pattern / view controls ----------
+ *
+ * BANK picks which 16-pattern block the PATTERN column and INST./EXT below
+ * are looking at; INST./EXT picks which 16-column view of that pattern the
+ * chart draws. Both now live here rather than inside the chart itself - see
+ * grid.js's own comment on why chart-tabs moved out - so a bank or view
+ * change looks exactly like a pattern change: pick a control, the chart
+ * underneath is rebuilt.
+ */
+/* The rule the top tabs rest on, and that the chosen one breaks to open into
+   the sheet below - the same cue the window tabs use. */
+.control-bar {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin: 0 -8px 8px;
+  padding: 6px 8px 0;
+  border-bottom: 1px solid var(--ink);
+}
+/* Banks are tabs, the same idiom as INST./EXT one row over: the chosen one
+   takes the colour of the surface it opens onto and the others sit a step
+   back. They select what you are looking at, exactly as those do. */
+.bank-btn { min-width: 26px; text-align: center; }
+
+/* The 1-16 pattern picker runs down the chart's left edge, level with the
+   instrument names inside it - the margin-top is the chart's own padding plus
+   its ruler row, so button 1 sits beside the first lane rather than the
+   chart's outer border. */
+/* The pattern column beside the chart. Deliberately NOT called .chart-row:
+   that class is already on every <tr> in the grid, and giving those rows
+   display:flex collapses the table's columns to slivers. */
+.detail-body { display: flex; align-items: flex-start; gap: 8px; }
+/* margin-top clears the chart's own padding and the ruler band above the first
+   lane, so button 1 starts level with the first row. */
+/* Tabs down the side, opening rightwards onto the same sheet the top ones open
+   downwards onto: the chosen one takes the paper's colour and steps over the
+   rule, the rest sit back in the dimmer grey. margin-top clears the ruler band
+   so PATTERN 1 starts level with the first lane. */
+.pattern-col {
+  display: flex;
+  flex-direction: column;
+  flex: none;
+  margin-top: var(--ruler);
+  border-right: 1px solid var(--ink);
+}
+.pattern-btn {
+  width: 30px;
+  height: var(--pattern-step);
+  padding: 0;
   text-align: center;
-  background: var(--panel);
+  background: var(--face-dim);
+  border: 1px solid var(--ink);
+  border-right: none;
+  border-bottom: none;
+  position: relative;
+  left: 0;
 }
-.dropzone p { margin: 0.2rem 0; }
-.dropzone.over { border-color: var(--accent); background: #201a13; }
+.pattern-btn:last-child { border-bottom: 1px solid var(--ink); }
+.pattern-btn:hover:not(:disabled):not([aria-selected="true"]) { background: var(--paper); }
+.pattern-btn[aria-selected="true"] {
+  background: var(--paper);
+  left: 1px;
+}
 
-pre.grid, pre.log {
+/* The Files column's one permanent extra row. It does not open a picker like
+   Save does, it switches Detail to the setup record, so it reads as a
+   selectable row - inverted when chosen - rather than a command. */
+.config-btn { display: block; width: 100%; margin-top: 8px; text-align: left; }
+.config-btn[aria-selected="true"] { background: var(--ink); color: var(--paper); }
+.config-btn[aria-selected="true"]:hover { background: var(--ink); }
+
+/* ---------- paper areas ---------- */
+
+pre.paper {
   margin: 0;
-  background: var(--panel-2);
-  border: 1px solid var(--line);
-  border-radius: 4px;
-  padding: 0.8rem;
-  font: 0.85rem/1.45 var(--mono);
+  background: var(--paper);
+  border: 1px solid var(--ink);
+  padding: 8px 10px;
+  font: inherit;
   overflow: auto;
   white-space: pre;
+  min-height: 12rem;
 }
-pre.grid { min-height: 12rem; }
-pre.log { max-height: 16rem; min-height: 6rem; }
-pre.log .bad { color: var(--danger); }
+/* The grid must never wrap - a wrapped step row is unreadable - but a log line
+   can be a sentence, and scrolling sideways to read an error is worse than a
+   soft wrap. */
+pre.log { min-height: 6rem; max-height: 14rem; white-space: pre-wrap; }
+pre.log .bad { font-weight: 700; }
+pre.log .bad::before { content: "! "; }
+#legend { margin: 8px 0 0; white-space: pre-line; }
 
-progress {
+/* ---------- the step chart ----------
+ *
+ * The printed chart on the machine, in the two colours this page has. Fixed
+ * rows so a voice sits in the same place in every pattern, a heavier rule every
+ * fourth step so 16 cells stay countable, and no colour doing any work: loud is
+ * solid, soft is the dither, and the two are told apart at a glance without
+ * relying on hue.
+ */
+
+/* The paper moved out to the panel, which now holds the tabs on two edges as
+   well as the grid. The chart itself is just what is drawn on it. */
+.chart { overflow-x: auto; }
+
+.chart-panel {
+  background: var(--paper);
+  border: 1px solid var(--ink);
+  padding: 8px;
+}
+
+/* INST. / EXT, the same folder-tab idiom as the window tabs one level up: the
+   chosen one takes the colour of the surface it opens onto - the chart's own
+   paper - and the other sits a step back. app.js puts these in the Detail
+   column's control bar rather than inside the chart now, so the strip's own
+   underline and bottom margin - meant for sitting flush above that paper -
+   are switched off there and the control bar supplies its own spacing. */
+.chart-tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 8px;
+  border-bottom: 1px solid var(--ink);
+}
+.control-bar .chart-tabs { margin-bottom: 0; border-bottom: none; }
+.control-bar .bank-buttons { flex: none; }
+.chart-tab {
+  background: var(--face-dim);
+  border: 1px solid var(--ink);
+  border-bottom: none;
+  color: var(--ink);
+  font: inherit;
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  padding: 1px 12px;
+  cursor: pointer;
+  position: relative;
+  top: 0;
+}
+.chart-tab:hover[aria-selected="false"] { background: var(--face); }
+.chart-tab[aria-selected="true"] {
+  background: var(--paper);
+  top: 1px;
+}
+
+table.chart-grid {
+  border-collapse: collapse;
+  table-layout: fixed;
   width: 100%;
-  height: 0.5rem;
-  accent-color: var(--accent);
+  /* The lanes divide this between them, so the grid ends level with PATTERN 16
+     whether it is showing thirteen of them or sixteen. The ruler band is added
+     on top rather than taken out of the middle: the pattern column starts level
+     with the first lane, not with the band above it. */
+  height: calc(var(--grid-height) + var(--ruler));
 }
 
-details.note {
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  padding: 0.7rem 1rem;
-  font-size: 0.88rem;
+.chart-corner, .chart-num, .chart-label {
+  font: inherit;
+  font-weight: 400;
+  text-align: left;
+  padding: 1px 4px;
+  white-space: nowrap;
 }
-details.note summary { cursor: pointer; color: var(--muted); font-weight: 600; }
-details.note p { color: var(--muted); }
+/* Sized to the longest label the chart prints, so the grid gets the rest. */
+.chart-corner { width: var(--corner); letter-spacing: 0.12em; }
+/* A thin ruler band rather than a row of numbers: it carries the beat rules,
+   gives the playhead handle somewhere to sit above the grid, and keeps the
+   column that the handle's hit-testing reads. */
+.chart-num {
+  width: auto;
+  height: var(--ruler);
+  padding: 0;
+}
+.chart-label {
+  border: 1px solid var(--ink);
+  border-right: none;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+}
+
+.chart-row { cursor: pointer; }
+.chart-row[aria-selected="true"] .chart-label { background: var(--ink); color: var(--paper); }
+.chart-row:hover .chart-label { text-decoration: underline; }
+/* TRIG and ACCENT are not voices, so they do not look like ones. The ext lanes
+   have a whole view to themselves now and need no marking inside it. */
+.chart-utility .chart-label { font-style: italic; }
+.chart-utility:first-of-type td.cell { border-top-width: 2px; }
+
+td.cell {
+  border: 1px solid var(--ink);
+  padding: 0;
+  position: relative;
+}
+/* The beat rule. The machine prints it every four steps and it is the only
+   reason a 16-step row is readable without counting. */
+td.cell.beat, th.chart-num.beat { border-left-width: 2px; }
+/* Where a short ext loop starts over. Dashed because it is not a boundary in
+   the pattern - the steps to its right are the same steps repeating. */
+td.cell.wrap { border-left: 2px dashed var(--ink); }
+td.cell.loud { background: var(--ink); }
+td.cell.soft { background-image: var(--dither); background-size: 2px 2px; }
+/* Flam: a filled corner, which is the one mark that survives on top of both a
+   solid cell and a dithered one. */
+td.cell.flam::after {
+  content: "";
+  position: absolute;
+  inset: 0 auto auto 0;
+  border-top: 6px solid var(--paper);
+  border-right: 6px solid transparent;
+}
+/* Past the last step: struck through, so a 12-step pattern reads as 12 steps
+   rather than as four silent ones. */
+td.cell.past {
+  background-image: linear-gradient(
+    to bottom right,
+    transparent calc(50% - 0.5px), var(--ink) calc(50% - 0.5px),
+    var(--ink) calc(50% + 0.5px), transparent calc(50% + 0.5px));
+  opacity: 0.4;
+}
+
+/* Editable cells. The pointer is the affordance rather than any decoration -
+   a chart where every cell announces itself stops reading as a chart - and the
+   hover outline is inset so it does not shift the grid by a pixel. */
+td.cell.editable { cursor: pointer; }
+td.cell.editable:hover { box-shadow: inset 0 0 0 2px var(--ink); }
+td.cell.editable.loud:hover { box-shadow: inset 0 0 0 2px var(--paper); }
+/* Mid-drag the pointer is laying down steps, so the browser must not decide it
+   is selecting text across the grid instead. */
+.chart.painting { user-select: none; }
+
+/* The LAST STEP playhead: where the pattern loops. `left` is set inline in
+   grid.js from the same --corner-based column math table-layout: fixed uses
+   for the grid itself, so the rule and the handle land on the actual column
+   boundary without measuring the table.
+
+   Solid and full height, on purpose against the two dashed/thin rules it
+   shares the grid with: the ext wrap (td.cell.wrap) is dashed because it is
+   not a boundary - the steps past it are the same steps repeating - and the
+   beat rule is a plain cell border that never leaves the grid. The playhead is
+   the one rule that means "the pattern stops here", so it is the heaviest
+   mark on the chart and the only one that reaches past the grid's own edge. */
+.chart-grid-wrap { position: relative; }
+.playhead {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 0;
+  margin-left: -1px;   /* centres the 2px rule on the boundary, not beside it */
+  border-left: 2px solid var(--ink);
+  pointer-events: none;
+}
+/* The grip: a filled diamond straddling the top of the grid, the same shape
+   the GEM radio buttons use for "this one is live" - here it says "this is
+   what moves". */
+/* A marker pointing back down the loop rather than a symmetrical diamond: it
+   sits at the end and points at the steps that actually play. Translated a
+   whole width left so its flat edge meets the rule, and padded so the hit area
+   is bigger than the glyph - a 12px arrowhead is a hard thing to grab. */
+.playhead-handle {
+  position: absolute;
+  top: -3px;
+  transform: translateX(-100%);
+  padding: 0 3px;
+  font-size: 13px;
+  line-height: 1;
+  color: var(--ink);
+  cursor: ew-resize;
+  z-index: 1;
+  user-select: none;
+}
+/* Grows rather than glows: a size change is the only hover cue available that
+   stays inside two hard-edged colours. */
+.playhead-handle:hover, .playhead-handle:active { font-size: 16px; top: -5px; }
+
+
+.chart-readouts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.readout {
+  border: 1px solid var(--ink);
+  padding: 1px 7px;
+  display: flex;
+  gap: 7px;
+  align-items: baseline;
+  font-size: 11px;
+}
+.readout-label { letter-spacing: 0.08em; opacity: 0.75; }
+.readout-value { font-size: 13px; }
+
+/* A GEM progress bar: solid ink filling a white trough, no animation. */
+progress {
+  appearance: none;
+  width: 100%;
+  height: 12px;
+  margin-bottom: 10px;
+  border: 1px solid var(--ink);
+  background: var(--paper);
+}
+progress::-webkit-progress-bar { background: var(--paper); }
+progress::-webkit-progress-value { background: var(--ink); }
+
+.dropzone {
+  border: 1px dashed var(--ink);
+  padding: 9px 12px;
+  margin-bottom: 14px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.dropzone.over { background: var(--paper); border-style: solid; }
 
 kbd {
-  font: 0.8rem var(--mono);
-  background: var(--panel-2);
-  border: 1px solid var(--line);
-  border-bottom-width: 2px;
-  border-radius: 3px;
-  padding: 0.05rem 0.35rem;
+  border: 1px solid var(--ink);
+  padding: 0 4px;
+  background: var(--paper);
 }
-code { font: 0.85em var(--mono); color: var(--accent); }
+code { font: inherit; text-decoration: underline; text-underline-offset: 2px; }
+
+/* ---------- alert boxes ---------- */
+
+.alert {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  background: var(--face);
+  border: 1px solid var(--ink);
+  box-shadow: var(--shadow);
+  padding: 12px 14px;
+  margin: 18px 18px 0;
+}
+main + .alert, .alert { max-width: 1200px; }
+#unsupported { margin-inline: auto; }
+/* The GEM stop/alert icon: a heavy exclamation in a hard box. */
+.alert-icon {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  border: 1px solid var(--ink);
+  display: grid;
+  place-content: center;
+  font-weight: 700;
+  font-size: 16px;
+}
+.alert h2 { margin: 0 0 6px; font: inherit; font-weight: 700; }
+.alert p { margin: 0; }
 
 dialog {
-  background: var(--panel);
-  color: var(--text);
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  padding: 1.2rem;
-  max-width: 32rem;
+  background: var(--face);
+  color: var(--ink);
+  border: 1px solid var(--ink);
+  box-shadow: var(--shadow);
+  border-radius: 0;
+  padding: 14px;
+  max-width: 34rem;
+  font: inherit;
 }
-dialog::backdrop { background: rgb(0 0 0 / 0.6); }
-dialog h2 { color: var(--danger); }
-.dialog-buttons { display: flex; justify-content: flex-end; gap: 0.6rem; margin-top: 1rem; }
+dialog .alert { margin: 0; box-shadow: none; border: none; background: none; padding: 0; }
+dialog::backdrop {
+  background-color: var(--paper);
+  background-image: var(--dither);
+  background-size: 2px 2px;
+  opacity: 0.5;
+}
+.dialog-buttons { display: flex; justify-content: center; gap: 14px; margin-top: 14px; }
 
-@media (max-width: 720px) {
-  .columns { flex-direction: column; }
-  .tagline { display: none; }
+/* ---------- status line ---------- */
+
+.statusbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--paper);
+  border-top: 1px solid var(--ink);
+  padding: 3px 8px;
+  min-height: 24px;
+}
+.status-right { margin-left: auto; display: flex; align-items: center; gap: 12px; }
+
+/* The dialog floats in the middle of the desktop once there is room for it,
+   which is where GEM put one. `main` is already the flex child that takes the
+   height left between the desktop bar and the status line, so centring inside
+   it is centring in the window.
+
+   Below the breakpoint it goes back to filling the width, because a centred box
+   on a narrow window is just a narrower box. */
+@media (min-width: 1100px) and (min-height: 720px) {
+  main {
+    display: grid;
+    place-content: center;
+  }
+  #shell {
+    width: fit-content;
+    max-width: 100%;
+  }
+}
+
+@media (max-width: 760px) {
+  .row { flex-direction: column; }
+  .row > * { width: 100%; }
+  /* The tabs and the MIDI accessories stop fitting on one line well before the
+     panels do, so the header stacks first. */
+  .shell-head { flex-wrap: wrap; }
+  .shell-status { margin-left: 0; padding-bottom: 8px; }
+  .tabs { flex-wrap: wrap; }
 }

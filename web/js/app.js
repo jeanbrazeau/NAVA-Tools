@@ -12,6 +12,8 @@
 
 import * as protocol from './protocol.js';
 import * as bootloader from './bootloader.js';
+import * as grid from './grid.js';
+import { History } from './history.js';
 import * as ihex from './ihex.js';
 import * as library from './library.js';
 import * as midi from './midi.js';
@@ -35,7 +37,17 @@ const state = {
   ports: null,
   files: [],
   selectedFile: null,
-  selectedItem: null,
+  // Where Detail is looking within the selected backup: `bank` and `pattern`
+  // are the BANK/PATTERN pickers' own selection (pattern is the Item, or null
+  // once a file has none), `view` is INST./EXT - a panel-level control, so it
+  // is not reset by picking a different bank or pattern. `detailItem` is
+  // whichever Item Detail is actually showing - `pattern`, or the config
+  // record once "config / setup" is clicked - since viewing the setup record
+  // does not disturb the bank/pattern selection underneath it.
+  bank: null,
+  pattern: null,
+  view: 'inst',
+  detailItem: null,
   busy: false,
   stopRequested: false,
   settings: store.load(),
@@ -44,6 +56,24 @@ const state = {
   // fork for as long as that link is open, and a shared link carries it.
   repo: new URLSearchParams(location.search).get('repo') || releases.DEFAULT_REPO,
 };
+
+// Undo/redo for pattern edits. Session-lived and in memory, like the rest of
+// `state` - it does not need to survive a reload, and the History class
+// itself has no idea what a file or an item is, so it lives outside `state`.
+const history = new History();
+
+// A copy of each item's payload as it stood when its file was loaded (or last
+// saved), so an edited file can tell whether undoing has brought it back to
+// that state without having to remember every edit that happened in between.
+const loadedSnapshots = new WeakMap();
+
+// Which lane the chart was showing in each view, so rebuilding it - a bank,
+// pattern or view change does this, and so does undo - reopens on the same
+// row instead of resetting to BASS DRUM. Keyed by item and then by view
+// ('inst'/'ext') rather than kept as one value, so switching to a different
+// pattern and back does not carry the wrong pattern's lane with it; switching
+// patterns on purpose is exactly the case that should NOT preserve it.
+const chartLanes = new WeakMap();
 
 /* ---------- small helpers ---------- */
 
@@ -185,6 +215,7 @@ function portList(element, ports, selectedName, onPick) {
   for (const port of ports) {
     const item = document.createElement('li');
     item.setAttribute('aria-selected', String(port.name === selectedName));
+    item.title = port.manufacturer ? `${port.name} — ${port.manufacturer}` : port.name;
     const name = document.createElement('span');
     name.textContent = port.name;
     const sub = document.createElement('span');
@@ -285,6 +316,7 @@ function addFile(name, bytes) {
     }
   }
   const file = library.load(label, data);
+  for (const item of file.items) loadedSnapshots.set(item, item.payload.slice());
   state.files = [file, ...state.files.filter((f) => f.name !== label)];
   refreshFiles();
   selectFile(file);
@@ -303,12 +335,15 @@ function refreshFiles() {
   for (const file of state.files) {
     const item = document.createElement('li');
     item.setAttribute('aria-selected', String(file === state.selectedFile));
+    // Filename only. A backup summary is a dozen words - putting it beside a
+    // 25-character filename in a list box leaves room for neither, and it is
+    // already on the row's title and in the Detail pane.
+    item.title = `${file.name} — ${file.summary()}`;
     const name = document.createElement('span');
-    name.textContent = file.name;
-    const sub = document.createElement('span');
-    sub.className = 'sub';
-    sub.textContent = file.summary();
-    item.append(name, sub);
+    // A leading bullet is the whole marker: it survives the row inverting,
+    // which a colour would not.
+    name.textContent = file.edited ? `\u2022 ${file.name}` : file.name;
+    item.append(name);
     item.addEventListener('click', () => selectFile(file));
     list.appendChild(item);
   }
@@ -339,62 +374,217 @@ function fileByName(name) {
   return state.files.find((f) => f.name === name) ?? null;
 }
 
+/* ---------- browse: banks and patterns ----------
+ *
+ * The Contents list used to let you click any item. In its place, Detail
+ * itself is the picker: BANK narrows to one 16-pattern block, PATTERN narrows
+ * to one slot in it, and the file's config record (if it has one) is reached
+ * from the "config / setup" row under Files instead of from a list entry.
+ */
+
+const patternBank = (item) => Math.floor(item.param / protocol.PTRN_PER_BANK);
+const patternSlot = (item) => item.param % protocol.PTRN_PER_BANK;
+
+/** The bank letter a bank index prints as, via the same mapping the firmware
+ *  and the CLI use - not re-derived by hand, and not assumed to stop at four
+ *  banks: MAX_BANK is 8, and a full backup uses all of them. */
+const bankLetter = (bank) => protocol.patternLabel(bank * protocol.PTRN_PER_BANK).charAt(0);
+
+/** bank index -> Map(slot 0..15 -> Item), built from whichever pattern items
+ *  the file actually has. Only a backup has any; everything else reads as no
+ *  banks at all, which is what leaves BANK, PATTERN and config / setup empty. */
+function patternsByBank(file) {
+  const banks = new Map();
+  if (!file || file.kind !== library.KIND_BACKUP) return banks;
+  for (const item of file.items) {
+    if (item.cmd !== protocol.NAVA_PTRN_DMP) continue;
+    const bank = patternBank(item);
+    if (!banks.has(bank)) banks.set(bank, new Map());
+    banks.get(bank).set(patternSlot(item), item);
+  }
+  return banks;
+}
+
+/** The lowest-numbered pattern a bank has, or null - what BANK lands on when
+ *  there is nothing already selected worth keeping. */
+function firstPattern(slots) {
+  for (let slot = 0; slot < protocol.PTRN_PER_BANK; slot += 1) {
+    if (slots.has(slot)) return slots.get(slot);
+  }
+  return null;
+}
+
+function fileConfigItem(file) {
+  if (!file || file.kind !== library.KIND_BACKUP) return null;
+  return file.items.find((i) => i.cmd === protocol.NAVA_CONFIG_DMP) ?? null;
+}
+
 function selectFile(file) {
   state.selectedFile = file;
-  state.selectedItem = null;
+  const banks = patternsByBank(file);
+  const bankKeys = [...banks.keys()].sort((a, b) => a - b);
+  state.bank = bankKeys[0] ?? null;
+  state.pattern = state.bank !== null ? firstPattern(banks.get(state.bank)) : null;
+  state.detailItem = state.pattern;
   refreshFiles();
-  refreshItems();
+  refreshBrowse();
 }
 
-function refreshItems() {
-  const list = $('items');
-  list.replaceChildren();
-  $('legend').textContent = '';
-  const file = state.selectedFile;
-  if (!file) {
-    showDetail('Load a .syx to see what is in it.');
-    return;
-  }
-
-  if (file.kind !== library.KIND_BACKUP) {
-    const item = document.createElement('li');
-    item.className = 'empty';
-    item.textContent = file.kind === library.KIND_FIRMWARE ? 'firmware image' : 'unrecognised';
-    list.appendChild(item);
-    showDetail(describeFile(file));
-    return;
-  }
-
-  for (const entry of file.items) {
-    const item = document.createElement('li');
-    item.setAttribute('aria-selected', String(entry === state.selectedItem));
-    const name = document.createElement('span');
-    name.textContent = entry.label;
-    const sub = document.createElement('span');
-    sub.className = 'sub';
-    sub.textContent = summariseItem(entry);
-    item.append(name, sub);
-    item.addEventListener('click', () => {
-      state.selectedItem = entry;
-      refreshItems();
-    });
-    list.appendChild(item);
-  }
-
-  const chosen = state.selectedItem;
-  $('legend').textContent = chosen?.cmd === protocol.NAVA_PTRN_DMP ? render.legend() : '';
-  showDetail(chosen ? describeItem(file, chosen) : describeFile(file));
+function selectBank(bank) {
+  state.bank = bank;
+  const slots = patternsByBank(state.selectedFile).get(bank) ?? new Map();
+  // Stay on the same slot if this bank still has it - PATTERN 3 in bank A and
+  // PATTERN 3 in bank B are different patterns, but landing on the same slot
+  // number is less surprising than jumping to slot 1 for no reason.
+  const kept = state.pattern && slots.get(patternSlot(state.pattern)) === state.pattern;
+  selectPattern(kept ? state.pattern : firstPattern(slots));
 }
 
-function summariseItem(item) {
+function selectPattern(item) {
+  state.pattern = item;
+  state.detailItem = item;
+  refreshBrowse();
+}
+
+function selectView(view) {
+  if (state.view === view) return;
+  state.view = view;
+  // INST./EXT are controls for the pattern chart, so clicking one always
+  // shows it - if config / setup was on screen, this is how you get back.
+  if (state.pattern) state.detailItem = state.pattern;
+  refreshBrowse();
+}
+
+function selectConfig() {
+  const item = fileConfigItem(state.selectedFile);
+  if (!item) return;
+  state.detailItem = item;
+  refreshBrowse();
+}
+
+function refreshBankButtons() {
+  const wrap = $('bank-buttons');
+  wrap.replaceChildren();
+  const banks = patternsByBank(state.selectedFile);
+  for (const bank of [...banks.keys()].sort((a, b) => a - b)) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'chart-tab bank-btn';
+    button.textContent = bankLetter(bank);
+    button.setAttribute('aria-selected', String(bank === state.bank));
+    button.addEventListener('click', () => selectBank(bank));
+    wrap.appendChild(button);
+  }
+}
+
+function refreshPatternButtons() {
+  const wrap = $('pattern-buttons');
+  wrap.replaceChildren();
+  const slots = (state.bank !== null && patternsByBank(state.selectedFile).get(state.bank)) || new Map();
+  for (let slot = 0; slot < protocol.PTRN_PER_BANK; slot += 1) {
+    const item = slots.get(slot) ?? null;
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'btn pattern-btn';
+    button.textContent = String(slot + 1);
+    button.disabled = !item;
+    button.setAttribute('aria-selected', String(item !== null && item === state.pattern));
+    if (item) button.addEventListener('click', () => selectPattern(item));
+    wrap.appendChild(button);
+  }
+}
+
+/** The count on the EXT button, so a tab that opens onto sixteen blank rows
+ *  says so first - moved here from grid.js along with the tabs themselves. */
+function extTrackCount(item) {
+  if (!item) return 0;
   try {
-    const decoded = item.decoded();
-    if (item.cmd === protocol.NAVA_PTRN_DMP) return render.summarisePattern(decoded);
-    if (item.cmd === protocol.NAVA_TRACK_DMP) return `${decoded.used.length} pattern(s)`;
-    return 'setup';
-  } catch (error) {
-    return 'undecodable';
+    return item.decoded().activeExtTracks().length;
+  } catch {
+    return 0;
   }
+}
+
+function refreshViewButtons() {
+  const instButton = $('view-inst');
+  const extButton = $('view-ext');
+  const item = state.pattern;
+  const count = extTrackCount(item);
+  extButton.textContent = count ? `EXT (${count})` : 'EXT';
+  instButton.disabled = !item;
+  extButton.disabled = !item;
+  instButton.setAttribute('aria-selected', String(state.view === 'inst'));
+  extButton.setAttribute('aria-selected', String(state.view === 'ext'));
+}
+
+function refreshConfigEntry() {
+  const button = $('config-entry');
+  const item = fileConfigItem(state.selectedFile);
+  button.disabled = !item;
+  button.setAttribute('aria-selected', String(item !== null && item === state.detailItem));
+}
+
+function refreshBrowse() {
+  refreshBankButtons();
+  refreshPatternButtons();
+  refreshViewButtons();
+  refreshConfigEntry();
+
+  const file = state.selectedFile;
+  $('legend').textContent = '';
+  if (!file || file.kind !== library.KIND_BACKUP || !state.detailItem) {
+    showDetail(file ? describeFile(file) : 'Load a .syx to see what is in it.', detailTitle(file));
+    return;
+  }
+
+  const item = state.detailItem;
+  if (item.cmd === protocol.NAVA_PTRN_DMP) {
+    showChart(file, item);
+  } else {
+    showDetail(describeItem(file, item), detailTitle(file, item));
+  }
+}
+
+/** What #detail-title reads: the file alone, or the file and the item once one
+ *  is picked. Shared by the chart and the plain-text views so the header reads
+ *  the same regardless of which one is showing. */
+function detailTitle(file, item = null) {
+  if (!file) return '';
+  return item ? `${file.name}  ›  ${item.label}` : file.name;
+}
+
+/* A pattern gets the machine's step chart; everything else is text. The two
+ * views swap rather than stack, so the pane is never both - but the header
+ * above them (#detail-title, undo, redo) is neither's own, so it is set here
+ * rather than by grid.js, and survives a chart rebuild untouched. */
+function showChart(file, item) {
+  let pattern;
+  try {
+    pattern = item.decoded();
+  } catch (error) {
+    showDetail(`${item.label}: ${error.message ?? error}`, detailTitle(file, item));
+    return;
+  }
+  // Per view, not per file-wide state: the same pattern can be looked at in
+  // INST. or EXT, and each remembers its own lane independently.
+  const lanes = chartLanes.get(item) ?? {};
+  $('detail-title').textContent = detailTitle(file, item);
+  const chart = $('chart');
+  chart.replaceChildren(
+    grid.patternChart(pattern, {
+      config: file.config,
+      // The record's own bytes, edited in place. Everything downstream -
+      // Restore, Save - reads the items, so an edit is live the moment it lands.
+      payload: item.payload,
+      onEdit: (before) => recordEdit(file, item, before),
+      view: state.view,
+      lane: lanes[state.view] ?? null,
+      onViewChange: (view, lane) => chartLanes.set(item, { ...lanes, [view]: lane }),
+    }),
+  );
+  chart.hidden = false;
+  $('detail').hidden = true;
+  $('legend').textContent = grid.chartLegend(true);
 }
 
 function describeFile(file) {
@@ -406,7 +596,7 @@ function describeFile(file) {
   if (file.errors.length) {
     lines.push('', ...file.errors.map((e) => `bad: ${e}`));
   }
-  if (file.kind === library.KIND_BACKUP) lines.push('', 'Pick an item on the left.');
+  if (file.kind === library.KIND_BACKUP) lines.push('', 'Pick a bank and pattern above, or config / setup on the left.');
   return lines.join('\n');
 }
 
@@ -417,21 +607,153 @@ function describeItem(file, item) {
   } catch (error) {
     return `${item.label}: ${error.message ?? error}`;
   }
-  if (item.cmd === protocol.NAVA_PTRN_DMP) {
-    return render.patternText(decoded, {
-      config: file.config,
-      title: `${file.name}  ›  ${item.label}`,
-    });
-  }
+  // Patterns never reach here - they get the chart in showChart.
   if (item.cmd === protocol.NAVA_TRACK_DMP) {
     return render.trackLines(decoded, item.param).join('\n');
   }
   return render.configLines(decoded).join('\n');
 }
 
-function showDetail(text) {
+function showDetail(text, title = '') {
+  $('detail-title').textContent = title;
   $('detail').textContent = text;
+  $('detail').hidden = false;
+  $('chart').hidden = true;
 }
+
+/* ---------- editing ---------- */
+
+/* An edit changes the record in memory, never the file it came from. The list
+ * marks the file so it is obvious there is something to save, and the tab asks
+ * before closing on top of it. */
+
+const sameBytes = (a, b) =>
+  a.length === b.length && a.every((value, i) => value === b[i]);
+
+/** Whether every item in the file still reads exactly as it did when the file
+ *  was loaded (or last saved) - which is the file's own definition of "not
+ *  edited", not just "an edit happened at some point". Undoing back to that
+ *  state has to clear the marker, not just leave it set because a click once
+ *  fired. */
+function bytesMatchLoaded(file) {
+  return file.items.every((item) => sameBytes(item.payload, loadedSnapshots.get(item) ?? item.payload));
+}
+
+function syncEditedFlag(file) {
+  file.edited = !bytesMatchLoaded(file);
+  refreshFiles();
+}
+
+function announceEditState(file) {
+  status(file.edited ? `${file.name}: edited, not saved` : `${file.name}: back to as loaded`);
+}
+
+function unsavedEdits() {
+  return state.files.some((f) => f.edited);
+}
+
+/* ---------- undo/redo ---------- */
+
+function refreshUndoButtons() {
+  $('undo-edit').disabled = !history.canUndo();
+  $('redo-edit').disabled = !history.canRedo();
+}
+
+/** One history entry per gesture, not per cell - grid.js already fires
+ *  `onEdit` once per drag, with the bytes as they stood before it. Nothing
+ *  here touches the chart itself: it is mid-gesture, redrawing itself as
+ *  grid.js's own draw()/repaint() see fit, and does not need refreshBrowse()
+ *  rebuilding it out from under the pointer. */
+function recordEdit(file, item, before) {
+  history.push({ file, item, before, after: item.payload.slice() });
+  syncEditedFlag(file);
+  refreshUndoButtons();
+  announceEditState(file);
+}
+
+/** Show whatever the undo/redo just changed, then redraw it.
+ *
+ * The history is one chronological stack across every file, so an undo can
+ * land on a pattern in a different bank, or a different file, than the one on
+ * screen. It selects that bank and pattern rather than changing them quietly:
+ * an edit you cannot see undone is indistinguishable from an undo that did
+ * nothing, and the next thing the user does would be to press it again.
+ */
+function afterHistoryChange(file, item) {
+  syncEditedFlag(file);
+  state.selectedFile = file;
+  state.bank = patternBank(item);
+  state.pattern = item;
+  state.detailItem = item;
+  refreshFiles();
+  refreshBrowse();          // redraws the chart from the record as it now reads
+  if ($('panel-browse').hidden) $('tab-browse').click();
+  refreshUndoButtons();
+  announceEditState(file);
+}
+
+function undoEdit() {
+  const entry = history.undo();
+  if (!entry) return;
+  // set(), not a new array: item.payload is the same reference the chart was
+  // built on, and everything downstream reads that reference rather than a
+  // copy of it.
+  entry.item.payload.set(entry.before);
+  afterHistoryChange(entry.file, entry.item);
+}
+
+function redoEdit() {
+  const entry = history.redo();
+  if (!entry) return;
+  entry.item.payload.set(entry.after);
+  afterHistoryChange(entry.file, entry.item);
+}
+
+$('undo-edit').addEventListener('click', undoEdit);
+$('redo-edit').addEventListener('click', redoEdit);
+$('config-entry').addEventListener('click', selectConfig);
+$('view-inst').addEventListener('click', () => selectView('inst'));
+$('view-ext').addEventListener('click', () => selectView('ext'));
+
+// Cmd+Z / Ctrl+Z to undo, Cmd+Shift+Z or Ctrl+Y to redo - but not while the
+// Transfer and Firmware panels' text fields have focus, where Z and Y are
+// just letters being typed.
+window.addEventListener('keydown', (event) => {
+  if (!(event.metaKey || event.ctrlKey)) return;
+  const key = event.key.toLowerCase();
+  const isUndo = key === 'z' && !event.shiftKey;
+  const isRedo = (key === 'z' && event.shiftKey) || (key === 'y' && event.ctrlKey);
+  if (!isUndo && !isRedo) return;
+  const target = document.activeElement;
+  if (target?.tagName === 'INPUT' || target?.tagName === 'TEXTAREA' || target?.isContentEditable) return;
+  event.preventDefault();
+  if (isUndo) undoEdit();
+  else redoEdit();
+});
+
+$('save-file').addEventListener('click', async () => {
+  const file = state.selectedFile;
+  if (!file || file.kind !== library.KIND_BACKUP) {
+    status('pick a backup under Files to save');
+    return;
+  }
+  // Rebuilt from the items rather than from the bytes the file arrived as:
+  // the items are what the edits went into, and what a Restore would send.
+  const bytes = protocol.joinMessages(
+    file.items.map((i) => protocol.encode(i.cmd, i.param, i.payload)),
+  );
+  const target = await pickSaveFile(file.name);
+  if (!target) return;
+  await writeFile(target, bytes);
+  file.edited = false;
+  file.bytes = bytes;
+  // The saved state is now what "not edited" means for this file - undoing
+  // past this point should mark it edited again, not leave the marker
+  // pointing at bytes that were true before the save.
+  for (const item of file.items) loadedSnapshots.set(item, item.payload.slice());
+  refreshFiles();
+  status(`wrote ${target.name} (${bytes.length} bytes)`);
+});
 
 /* ---------- drop / pick ---------- */
 
@@ -546,27 +868,18 @@ $('do-download').addEventListener('click', async () => {
   const tag = $('release-tag').value.trim() || 'latest';
   const repo = state.repo;
   setBusy(true);
-  log('firmware-log', `looking up ${tag} in ${repo}…`);
   try {
-    const release = await releases.fetchRelease(tag, repo);
-    const asset = release.firmware;
-    if (!asset) throw new releases.ReleaseError(`${release.label} publishes no .syx`);
-    log('firmware-log', `${release.label}  ${release.published}  ${asset.name} (${asset.size} bytes)`);
+    const manifest = await releases.bundled();
+    const wantsLatest = tag === 'latest';
+    const usable =
+      manifest &&
+      manifest.repo === repo &&
+      (wantsLatest || matchesTag(manifest, tag));
 
-    const bytes = await releases.downloadAsset(asset, (done, total) => {
-      setProgress('firmware-progress', done, total);
-      status(`${done}/${total} bytes`);
-    });
-
-    // Named for the release rather than for the asset, so two releases cannot
-    // sit in the list under the same name.
-    const name = `nava-${release.tag.replace(/[^\w.-]+/g, '-')}.syx`;
-    const file = addFile(name, bytes);
-    if (!file || file.kind !== library.KIND_FIRMWARE) {
-      log('firmware-log', `${name} is not a bootloader image — refusing to offer it`, true);
+    if (usable) {
+      await useBundled(manifest, repo, wantsLatest);
     } else {
-      $('firmware-file').value = name;
-      log('firmware-log', `${name} ready: ${file.summary()}`);
+      await handOff(tag, repo, manifest);
     }
     state.settings.releaseTag = tag;
     store.save(state.settings);
@@ -575,6 +888,72 @@ $('do-download').addEventListener('click', async () => {
   }
   setBusy(false);
 });
+
+function matchesTag(manifest, tag) {
+  const key = tag.replace(/\s+/g, '').toLowerCase();
+  return [manifest.tag, manifest.name].some(
+    (value) => (value ?? '').replace(/\s+/g, '').toLowerCase() === key,
+  );
+}
+
+/** The copy deployed beside this page: one click, same origin, no CORS. */
+async function useBundled(manifest, repo, wantsLatest) {
+  log('firmware-log', `${manifest.tag}  ${manifest.published}  ${manifest.file} (deployed with this page)`);
+  const bytes = await releases.downloadBundled(manifest, (done, total) => {
+    setProgress('firmware-progress', done, total);
+    status(`${done}/${total} bytes`);
+  });
+  offer(manifest.file, bytes);
+
+  // Only worth a request when the user asked for "latest": the deployed copy is
+  // as new as the last time this site was built, and someone about to flash
+  // should know if the firmware has moved on since.
+  if (!wantsLatest) return;
+  try {
+    const newest = await releases.fetchRelease('latest', repo);
+    if (newest.tag && newest.tag !== manifest.tag) {
+      log(
+        'firmware-log',
+        `note: ${newest.tag} has been published since this page was built. ` +
+          `Type ${newest.tag} above to fetch it.`,
+      );
+    }
+  } catch {
+    // Offline, or rate limited. The image in hand is still good.
+  }
+}
+
+/* No deployed copy to use, so the browser downloads it and the file comes back
+ * by drag and drop. Two steps rather than one, and the only alternative to a
+ * CORS proxy - see the note at the top of releases.js. */
+async function handOff(tag, repo, manifest) {
+  log('firmware-log', `looking up ${tag} in ${repo}…`);
+  const release = await releases.fetchRelease(tag, repo);
+  const asset = release.firmware;
+  if (!asset) throw new releases.ReleaseError(`${release.label} publishes no .syx`);
+  log('firmware-log', `${release.label}  ${release.published}  ${asset.name} (${asset.size} bytes)`);
+
+  if (manifest) {
+    log('firmware-log', `(this page was deployed with ${manifest.tag}, so ${release.tag} has to come from GitHub)`);
+  }
+  releases.handOffToBrowser(asset);
+  log(
+    'firmware-log',
+    `${asset.name} is downloading in the browser — GitHub does not let a page read ` +
+      'a release asset directly. Drop the file on this page when it lands, and it ' +
+      'will appear in the list below.',
+  );
+}
+
+function offer(name, bytes) {
+  const file = addFile(name, bytes);
+  if (!file || file.kind !== library.KIND_FIRMWARE) {
+    log('firmware-log', `${name} is not a bootloader image — refusing to offer it`, true);
+    return;
+  }
+  $('firmware-file').value = name;
+  log('firmware-log', `${name} ready: ${file.summary()}`);
+}
 
 $('do-inspect').addEventListener('click', () => {
   const file = fileByName($('firmware-file').value);
@@ -604,8 +983,8 @@ $('do-flash').addEventListener('click', async () => {
   const ok = await confirmDialog(
     'Overwrite the firmware?',
     `${file.name}: ${file.pages} pages, about ${seconds}s. The unit must already ` +
-      'be in bootloader mode. Interrupting this leaves it unable to boot until ' +
-      'another image is flashed.',
+      'be in bootloader mode — steps 1, 3 and 5 held while powering it on. ' +
+      'Interrupting this leaves it unable to boot until another image is flashed.',
     'Flash',
   );
   if (!ok) return;
@@ -647,7 +1026,7 @@ $('cancel').addEventListener('click', () => {
 // the tab asks - it is the one case where the browser's generic warning is the
 // right one.
 window.addEventListener('beforeunload', (event) => {
-  if (!state.busy) return;
+  if (!state.busy && !unsavedEdits()) return;
   event.preventDefault();
   event.returnValue = '';
 });
@@ -658,4 +1037,6 @@ $('releases-link').textContent = `${state.repo} releases`;
 if (!midi.isSupported()) $('unsupported').hidden = false;
 refreshPorts();
 refreshFiles();
+refreshBrowse();
+refreshUndoButtons();
 updateConnection();

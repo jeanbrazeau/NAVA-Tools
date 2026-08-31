@@ -40,6 +40,22 @@ test('every element the app looks up by id exists in the page', () => {
   }
 });
 
+test('the stylesheet cannot un-hide a hidden element', () => {
+  // Any rule setting `display` on a tag or class outranks the user agent's
+  // `[hidden]` rule, so `el.hidden = true` stops working and the element renders
+  // anyway. It has happened twice: `section` left every tab panel on screen at
+  // once, and `.alert` left the unsupported-browser warning up in a browser that
+  // is perfectly well supported. The global override is what makes `hidden`
+  // mean hidden regardless of what any component rule does.
+  const css = readFileSync(join(WEB, 'style.css'), 'utf8');
+  assert.match(
+    css,
+    /\[hidden\]\s*\{[^}]*display\s*:\s*none\s*!important/,
+    'style.css needs `[hidden] { display: none !important }` — without it any ' +
+      'rule that sets display on a tag or class silently un-hides elements',
+  );
+});
+
 test('every tab button points at a panel that exists', () => {
   const controls = [...html.matchAll(/aria-controls="([^"]+)"/g)].map((m) => m[1]);
   assert.ok(controls.length >= 4);

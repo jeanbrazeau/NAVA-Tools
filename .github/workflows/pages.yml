@@ -9,17 +9,22 @@
 # no bundler output to diverge from the source, and `python3 -m http.server` in
 # web/ is an exact local copy of production.
 #
-# Deploys only after Tests passes on master: the site talks to a bootloader, and
-# a page that fails its own protocol vectors should not be the one people reach.
+# NOT PUBLISHED AUTOMATICALLY. This runs only when someone presses "Run
+# workflow" on the Actions tab, so merging to master deploys nothing.
+#
+# To publish on every green master build instead, uncomment the workflow_run
+# trigger below. It waits for Tests rather than running in parallel with it: the
+# site talks to a bootloader, and a page that fails its own protocol vectors
+# should not be the one people reach.
 
 name: Pages
 
 on:
-  workflow_run:
-    workflows: ["Tests"]
-    branches: [master]
-    types: [completed]
   workflow_dispatch:
+  # workflow_run:
+  #   workflows: ["Tests"]
+  #   branches: [master]
+  #   types: [completed]
 
 permissions:
   contents: read
@@ -46,6 +51,58 @@ jobs:
           ref: ${{ github.event.workflow_run.head_sha || github.sha }}
 
       - uses: actions/configure-pages@v5
+
+      # A release asset cannot be fetched cross-origin: api.github.com sends
+      # `access-control-allow-origin: *` but the asset itself sends no such
+      # header, so the page can look a release up and still not read its bytes.
+      # Here there is no CORS, so the current image ships beside the page and
+      # the Firmware panel is one click. Anything else falls back to a browser
+      # download - see the note at the top of web/js/releases.js.
+      #
+      # Never fails the deploy: a firmware repository with no releases yet, or a
+      # GitHub hiccup, should publish a site without a bundled image rather than
+      # no site at all.
+      - name: Bundle the current firmware
+        env:
+          GH_TOKEN: ${{ github.token }}
+          FIRMWARE_REPO: jeanbrazeau/Nava-Firmware
+        run: |
+          set -u
+          mkdir -p web/firmware
+          release=$(gh api "repos/$FIRMWARE_REPO/releases/latest" 2>/dev/null) || {
+            echo "no published release in $FIRMWARE_REPO; deploying without one"
+            exit 0
+          }
+          # Shortest .syx wins, the same rule the tool uses everywhere else:
+          # firmware.syx over firmware-debug.syx.
+          asset=$(echo "$release" | jq -c '[.assets[] | select(.name | endswith(".syx"))]
+                                           | sort_by(.name | length) | first')
+          if [ "$asset" = "null" ]; then
+            echo "latest release publishes no .syx; deploying without one"
+            exit 0
+          fi
+          name=$(echo "$asset" | jq -r .name)
+          gh api -H "Accept: application/octet-stream" \
+            "repos/$FIRMWARE_REPO/releases/assets/$(echo "$asset" | jq -r .id)" \
+            > "web/firmware/$name"
+          # The manifest is what the page reads; the size is checked against the
+          # file on disk so a truncated download does not ship as a good image.
+          got=$(wc -c < "web/firmware/$name" | tr -d ' ')
+          want=$(echo "$asset" | jq -r .size)
+          if [ "$got" != "$want" ]; then
+            echo "::warning::$name downloaded as $got bytes, expected $want; deploying without it"
+            rm -rf web/firmware
+            exit 0
+          fi
+          jq -n --arg repo "$FIRMWARE_REPO" --arg file "$name" \
+                --arg tag "$(echo "$release" | jq -r .tag_name)" \
+                --arg name "$(echo "$release" | jq -r '.name // .tag_name')" \
+                --arg published "$(echo "$release" | jq -r '.published_at // ""' | cut -c1-10)" \
+                --argjson size "$want" \
+                '{repo: $repo, tag: $tag, name: $name, published: $published, file: $file, size: $size}' \
+            > web/firmware/index.json
+          echo "bundled $name ($want bytes)"
+          cat web/firmware/index.json
 
       - uses: actions/upload-pages-artifact@v3
         with:
