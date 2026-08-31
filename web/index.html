@@ -64,16 +64,15 @@
     </div>
 
     <!-- Each panel carries the state the unit has to be in for what that panel
-         does: the bootloader note here, beside the Flash controls, and the
-         SysEx page note on Transfer beside Dump and Restore. Together in one
-         box they were half instructions for a tab you were not on. -->
+         does: getting into the bootloader here, beside the Flash controls, and
+         the SysEx page note on Transfer beside Dump and Restore. Together in
+         one box they were half instructions for a tab you were not on. -->
     <fieldset class="group">
-      <legend>What the unit has to be doing</legend>
+      <legend>Flashing Firmware</legend>
       <p>
-        <strong>Flashing</strong> needs the unit in bootloader mode: hold steps
-        <kbd>1</kbd>, <kbd>3</kbd> and <kbd>5</kbd> while powering it on. The
-        panel does not react afterwards — it is no longer running the firmware —
-        and the unit restarts on its own when the transfer finishes.
+        Hold steps <kbd>1</kbd>, <kbd>3</kbd> and <kbd>5</kbd> while powering on
+        the NAVA. The device will reboot into the main operating system if no
+        firmware has begun transferring after 30 seconds.
       </p>
     </fieldset>
 

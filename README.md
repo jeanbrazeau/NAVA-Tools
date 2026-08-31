@@ -32,9 +32,9 @@ device is added or removed, and a remembered index would silently point at a
 different device.
 
 Each panel carries the state the unit has to be in for what that panel does —
-bootloader mode on Device, beside the Flash controls; the SysEx config page on
-Transfer, beside Dump and Restore. In one box together they were half
-instructions for a tab you were not on.
+getting into the bootloader on Device, beside the Flash controls; the SysEx
+config page on Transfer, beside Dump and Restore. In one box together they were
+half instructions for a tab you were not on.
 
 **Browse** takes `.syx` files dropped on it and draws a pattern as the chart
 printed on the machine: the voices down the left in the panel's own order, the
@@ -325,9 +325,10 @@ nava build                                     # .pio/build/nava_sysex/firmware.
 nava flash .pio/build/nava_sysex/firmware.syx --out NAVA-909
 ```
 
-Put the unit in bootloader mode first: **hold steps 1, 3 and 5 while powering it
-on**. The panel does not react afterwards — it is no longer running the firmware
-— and the unit restarts on its own when the transfer finishes.
+Put the unit in bootloader mode first: **hold steps 1, 3 and 5 while powering on
+the NAVA**. The device reboots into the main operating system if no firmware has
+begun transferring after 30 seconds, so start the flash rather than leaving it
+sitting there.
 
 The 250 ms default between pages is not politeness. The bootloader commits a
 flash page per message and does not buffer a second one while erasing, so
