@@ -46,10 +46,29 @@
 
   <section id="panel-device" role="tabpanel" aria-labelledby="tab-device">
 
+    <!-- The whole job in three lines, before any of the controls it talks
+         about: what to do, in the order you do it, and the one thing that can
+         go wrong while you are still reaching for the power switch. The panel
+         below is those steps laid out - ports, image, Flash. -->
+    <fieldset class="group">
+      <legend>Flashing Firmware</legend>
+      <p>
+        Enable MIDI and then pick the MIDI out port the Nava listens on and the
+        MIDI in port it answers on.
+      </p>
+      <p>
+        Hold steps <kbd>1</kbd>, <kbd>3</kbd> and <kbd>5</kbd> while powering on
+        the NAVA, select firmware and press Flash.
+      </p>
+      <p>
+        The device will reboot into the main operating system if no firmware has
+        begun transferring after 30 seconds.
+      </p>
+    </fieldset>
+
     <p class="hint">
-      Pick the MIDI out the Nava listens on and the MIDI in it answers on. They
-      are remembered by name, not by position — an index moves whenever a USB
-      device is added or removed.
+      The ports are remembered by name, not by position — an index moves
+      whenever a USB device is added or removed.
     </p>
 
     <div class="row">
@@ -62,19 +81,6 @@
         <ul id="in-ports" class="radios"></ul>
       </fieldset>
     </div>
-
-    <!-- Each panel carries the state the unit has to be in for what that panel
-         does: getting into the bootloader here, beside the Flash controls, and
-         the SysEx page note on Transfer beside Dump and Restore. Together in
-         one box they were half instructions for a tab you were not on. -->
-    <fieldset class="group">
-      <legend>Flashing Firmware</legend>
-      <p>
-        Hold steps <kbd>1</kbd>, <kbd>3</kbd> and <kbd>5</kbd> while powering on
-        the NAVA. The device will reboot into the main operating system if no
-        firmware has begun transferring after 30 seconds.
-      </p>
-    </fieldset>
 
     <!-- Flashing lives with the ports it flashes through rather than in a tab
          of its own. There is nothing left to choose beforehand: the firmware
