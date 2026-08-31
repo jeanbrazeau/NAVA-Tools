@@ -34,7 +34,6 @@
       <button role="tab" aria-selected="true" aria-controls="panel-device" id="tab-device"><u>D</u>EVICE</button>
       <button role="tab" aria-selected="false" aria-controls="panel-browse" id="tab-browse"><u>B</u>ROWSE</button>
       <button role="tab" aria-selected="false" aria-controls="panel-transfer" id="tab-transfer"><u>T</u>RANSFER</button>
-      <button role="tab" aria-selected="false" aria-controls="panel-firmware" id="tab-firmware"><u>F</u>IRMWARE</button>
     </nav>
     <div class="shell-status">
       <button id="enable-midi" class="btn default">Enable MIDI</button>
@@ -77,6 +76,33 @@
         panel does not react afterwards — it is no longer running the firmware —
         and the unit restarts on its own when the transfer finishes.
       </p>
+    </fieldset>
+
+    <!-- Flashing lives with the ports it flashes through rather than in a tab
+         of its own. There is nothing left to choose beforehand: the firmware
+         repository's release workflow commits the current image beside this
+         page, so the app loads it on startup and the picker is already filled.
+         Anything else - an older tag, a fork - is still a .syx dropped on the
+         Browse tab, which is how any other file gets in. -->
+    <fieldset class="group">
+      <legend>Flash: <span class="muted">image → Nava</span></legend>
+      <label class="field">Image
+        <select id="firmware-file"><option value="">— loading the deployed image —</option></select>
+      </label>
+      <div class="buttons">
+        <button id="do-inspect" class="btn"><u>I</u>nspect</button>
+        <button id="do-flash" class="btn">Flash</button>
+      </div>
+      <p class="muted">
+        Unit in bootloader mode first. A partial image leaves a unit that will
+        not boot, so do not close the tab mid-flash.
+      </p>
+    </fieldset>
+
+    <fieldset class="group">
+      <legend>Progress</legend>
+      <progress id="firmware-progress" value="0" max="1"></progress>
+      <pre id="firmware-log" class="paper log"></pre>
     </fieldset>
   </section>
 
@@ -178,46 +204,6 @@
     </fieldset>
   </section>
 
-  <section id="panel-firmware" role="tabpanel" aria-labelledby="tab-firmware" hidden>
-
-    <div class="row">
-      <fieldset class="group">
-        <legend>Get an image</legend>
-        <label class="field">Release
-          <input id="release-tag" value="latest" spellcheck="false" placeholder="latest, 0.91b, Nava 0.91b">
-        </label>
-        <div class="buttons"><button id="do-download" class="btn">Download</button></div>
-        <p class="muted">
-          From the firmware repository's
-          <a id="releases-link" href="https://github.com/jeanbrazeau/Nava-Firmware/releases" target="_blank" rel="noopener">releases page</a>.
-          A tag, or the release title as the page shows it. Building from source
-          needs PlatformIO and a checkout — that stays in the <code>nava</code>
-          command line tool.
-        </p>
-      </fieldset>
-
-      <fieldset class="group">
-        <legend>Flash: <span class="muted">image → Nava</span></legend>
-        <label class="field">Image
-          <select id="firmware-file"><option value="">— download one, or drop a .syx —</option></select>
-        </label>
-        <div class="buttons">
-          <button id="do-inspect" class="btn"><u>I</u>nspect</button>
-          <button id="do-flash" class="btn">Flash</button>
-        </div>
-        <p class="muted">
-          Unit in bootloader mode first. A partial image leaves a unit that will
-          not boot, so do not close the tab mid-flash.
-        </p>
-      </fieldset>
-    </div>
-
-    <fieldset class="group">
-      <legend>Progress</legend>
-      <progress id="firmware-progress" value="0" max="1"></progress>
-      <pre id="firmware-log" class="paper log"></pre>
-    </fieldset>
-  </section>
 
   </div>
 

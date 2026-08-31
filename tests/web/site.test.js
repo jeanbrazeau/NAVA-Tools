@@ -58,7 +58,10 @@ test('the stylesheet cannot un-hide a hidden element', () => {
 
 test('every tab button points at a panel that exists', () => {
   const controls = [...html.matchAll(/aria-controls="([^"]+)"/g)].map((m) => m[1]);
-  assert.ok(controls.length >= 4);
+  // Three since flashing moved in with the ports it flashes through and the
+  // Firmware tab went away. The floor is only here to catch the regex finding
+  // nothing; the real check is the panel lookup below.
+  assert.ok(controls.length >= 3);
   for (const id of controls) {
     assert.match(html, new RegExp(`id="${id}"[^>]*role="tabpanel"`), `no panel ${id}`);
   }

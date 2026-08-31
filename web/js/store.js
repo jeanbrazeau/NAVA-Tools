@@ -12,7 +12,6 @@ const KEY = 'nava-tools';
 export const DEFAULTS = {
   outputPort: null,
   inputPort: null,
-  releaseTag: 'latest',
 };
 
 export function load() {

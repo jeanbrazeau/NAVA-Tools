@@ -15,18 +15,17 @@
  * endpoint that behaves differently; a CORS proxy is the usual answer and is
  * the wrong one for a page that flashes firmware.
  *
- * So there are two paths, in this order:
+ * So the page reads one image and one only: the copy committed beside it
+ * (`firmware/index.json` and the .syx it names), which the firmware
+ * repository's release workflow pushes into web/firmware/ on every release
+ * (the Pages workflow downloads one at deploy time only as a fallback, where
+ * no CORS applies). Same origin, no third party involved at all - and present
+ * in a plain checkout, so a local server has it too. app.js loads it on
+ * startup, which is why there is no longer a panel asking which one to get.
  *
- *   1. The copy committed beside this page (`firmware/index.json` and the .syx
- *      it names), which the firmware repository's release workflow pushes into
- *      web/firmware/ on every release (the Pages workflow downloads one at
- *      deploy time only as a fallback, where no CORS applies). Same origin,
- *      one click, no third party involved at all - and present in a plain
- *      checkout, so a local server has it too.
- *   2. Anything else - an older tag, a fork, a release cut since the last
- *      deploy - hands off to an ordinary browser download and asks for the file
- *      back. GitHub serves assets as `Content-Disposition: attachment`, so a
- *      plain navigation downloads it and leaves the page alone.
+ * Anything else - an older tag, a fork, a release cut since the last deploy -
+ * is downloaded from the releases page by hand and dropped on Browse, the same
+ * way every other file reaches this app.
  *
  * Unauthenticated requests, deliberately: the releases of a public repository
  * need no token, and GitHub's 60-per-hour limit is not a constraint for a
@@ -201,19 +200,9 @@ async function readBody(response, expected, name, onProgress) {
   return out;
 }
 
-/** Hand an asset to the browser's own downloader.
- *
- * Not a fetch: see the CORS note at the top of this file. GitHub serves release
- * assets as `Content-Disposition: attachment`, so navigating to one downloads
- * it and leaves this page where it is - which is the whole reason this works
- * where reading the bytes does not.
- */
-export function handOffToBrowser(asset) {
-  const anchor = document.createElement('a');
-  anchor.href = asset.url;
-  anchor.rel = 'noopener';
-  // `download` is ignored cross-origin, but naming it costs nothing and is
-  // honoured if GitHub ever serves these same-origin.
-  anchor.download = asset.name;
-  anchor.click();
-}
+/* There was a handOffToBrowser here that navigated to a release asset so the
+ * browser downloaded it - the second path described at the top of this file,
+ * for a tag the deployed copy did not carry. Nothing calls it now: the page
+ * asks for no tag, and a file from anywhere else arrives the way every other
+ * file does, dropped on Browse. fetchRelease stays, for the note saying the
+ * deployed image has been superseded. */

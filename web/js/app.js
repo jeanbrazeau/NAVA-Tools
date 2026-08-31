@@ -100,7 +100,7 @@ function setProgress(id, done, total) {
 function setBusy(busy) {
   state.busy = busy;
   state.stopRequested = false;
-  for (const id of ['do-dump', 'do-restore', 'do-download', 'do-flash', 'do-inspect']) {
+  for (const id of ['do-dump', 'do-restore', 'do-flash', 'do-inspect']) {
     $(id).disabled = busy;
   }
 }
@@ -356,7 +356,7 @@ function refreshFiles() {
   fillSelect($('restore-file'), state.files.filter((f) => f.kind === library.KIND_BACKUP),
     '— load a .syx under Browse —');
   fillSelect($('firmware-file'), state.files.filter((f) => f.kind === library.KIND_FIRMWARE),
-    '— download one, or drop a .syx —');
+    '— drop a .syx on Browse —');
 }
 
 function fillSelect(element, files, placeholder) {
@@ -907,40 +907,43 @@ $('do-restore').addEventListener('click', async () => {
 
 /* ---------- firmware ---------- */
 
-$('do-download').addEventListener('click', async () => {
-  const tag = $('release-tag').value.trim() || 'latest';
-  const repo = state.repo;
-  setBusy(true);
+/** Load the image deployed beside this page, on startup, with nothing to press.
+ *
+ * The firmware repository's release workflow commits the current build into
+ * web/firmware/, so by the time anyone opens this there is exactly one image to
+ * flash and no question to ask about it - which is what the "Get an image"
+ * panel used to be for. Same origin, so it is a plain fetch with none of the
+ * CORS trouble a release asset has (see the note at the top of releases.js).
+ *
+ * Quietly, and never fatally: a checkout without the folder, or a deploy that
+ * did not get one, leaves the picker empty and everything else working. The
+ * flash path takes a dropped .syx exactly as it always did, which is also the
+ * way to reach an older tag or a fork now that there is no box to type one in.
+ */
+async function loadDeployedFirmware() {
+  let manifest = null;
   try {
-    const manifest = await releases.bundled();
-    const wantsLatest = tag === 'latest';
-    const usable =
-      manifest &&
-      manifest.repo === repo &&
-      (wantsLatest || matchesTag(manifest, tag));
-
-    if (usable) {
-      await useBundled(manifest, repo, wantsLatest);
-    } else {
-      await handOff(tag, repo, manifest);
-    }
-    state.settings.releaseTag = tag;
-    store.save(state.settings);
+    manifest = await releases.bundled();
+  } catch {
+    // Nothing there, or nothing readable. Handled the same as absent.
+  }
+  if (!manifest) {
+    log('firmware-log', 'no image deployed with this page — drop a .syx on Browse to flash one');
+    return;
+  }
+  try {
+    await useBundled(manifest, state.repo);
   } catch (error) {
     log('firmware-log', error.message ?? String(error), true);
   }
-  setBusy(false);
-});
-
-function matchesTag(manifest, tag) {
-  const key = tag.replace(/\s+/g, '').toLowerCase();
-  return [manifest.tag, manifest.name].some(
-    (value) => (value ?? '').replace(/\s+/g, '').toLowerCase() === key,
-  );
+  // The fetch drives the same bar the flash does, and leaving it full would
+  // have the panel opening on what looks like a finished transfer.
+  setProgress('firmware-progress', 0, 1);
+  status('');
 }
 
-/** The copy deployed beside this page: one click, same origin, no CORS. */
-async function useBundled(manifest, repo, wantsLatest) {
+/** The copy deployed beside this page: same origin, no CORS. */
+async function useBundled(manifest, repo) {
   log('firmware-log', `${manifest.tag}  ${manifest.published}  ${manifest.file} (deployed with this page)`);
   const bytes = await releases.downloadBundled(manifest, (done, total) => {
     setProgress('firmware-progress', done, total);
@@ -948,44 +951,22 @@ async function useBundled(manifest, repo, wantsLatest) {
   });
   offer(manifest.file, bytes);
 
-  // Only worth a request when the user asked for "latest": the deployed copy is
-  // as new as the last time this site was built, and someone about to flash
-  // should know if the firmware has moved on since.
-  if (!wantsLatest) return;
+  // The deployed copy is as new as the last time this site was built, and
+  // someone about to flash should know if the firmware has moved on since.
+  // Advisory only - there is no longer anywhere to type a tag, and the answer
+  // is to redeploy or to drop the .syx by hand.
   try {
     const newest = await releases.fetchRelease('latest', repo);
     if (newest.tag && newest.tag !== manifest.tag) {
       log(
         'firmware-log',
         `note: ${newest.tag} has been published since this page was built. ` +
-          `Type ${newest.tag} above to fetch it.`,
+          'Download it from the releases page and drop it on Browse to flash it.',
       );
     }
   } catch {
     // Offline, or rate limited. The image in hand is still good.
   }
-}
-
-/* No deployed copy to use, so the browser downloads it and the file comes back
- * by drag and drop. Two steps rather than one, and the only alternative to a
- * CORS proxy - see the note at the top of releases.js. */
-async function handOff(tag, repo, manifest) {
-  log('firmware-log', `looking up ${tag} in ${repo}…`);
-  const release = await releases.fetchRelease(tag, repo);
-  const asset = release.firmware;
-  if (!asset) throw new releases.ReleaseError(`${release.label} publishes no .syx`);
-  log('firmware-log', `${release.label}  ${release.published}  ${asset.name} (${asset.size} bytes)`);
-
-  if (manifest) {
-    log('firmware-log', `(this page was deployed with ${manifest.tag}, so ${release.tag} has to come from GitHub)`);
-  }
-  releases.handOffToBrowser(asset);
-  log(
-    'firmware-log',
-    `${asset.name} is downloading in the browser — GitHub does not let a page read ` +
-      'a release asset directly. Drop the file on this page when it lands, and it ' +
-      'will appear in the list below.',
-  );
 }
 
 function offer(name, bytes) {
@@ -1070,12 +1051,12 @@ window.addEventListener('beforeunload', (event) => {
   event.returnValue = '';
 });
 
-$('release-tag').value = state.settings.releaseTag ?? 'latest';
-$('releases-link').href = `https://github.com/${state.repo}/releases`;
-$('releases-link').textContent = `${state.repo} releases`;
 if (!midi.isSupported()) $('unsupported').hidden = false;
 refreshPorts();
 refreshFiles();
 refreshBrowse();
 refreshUndoButtons();
 updateConnection();
+// Last, and not awaited: it is one same-origin fetch that fills the Image
+// picker, and nothing above it should wait on the network to finish painting.
+loadDeployedFirmware();
