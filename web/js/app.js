@@ -2,8 +2,9 @@
  * look at what you have, move data, flash firmware.
  *
  * Everything a MIDI operation touches is async, so "busy" is a single flag
- * rather than a worker thread: the transfer loops await, the UI keeps painting,
- * and the Stop button is polled between items.
+ * rather than a worker thread: the transfer loops await and the UI keeps
+ * painting. They also poll a shouldStop between items, though nothing sets it
+ * now that the Stop button is gone - see the note on shouldStop.
  *
  * The two destructive actions go through a confirmation naming what is about to
  * be overwritten. Both write to a device that gives no confirmation of its own,
@@ -41,9 +42,9 @@ const state = {
   // are the BANK/PATTERN pickers' own selection (pattern is the Item, or null
   // once a file has none), `view` is INST./EXT - a panel-level control, so it
   // is not reset by picking a different bank or pattern. `detailItem` is
-  // whichever Item Detail is actually showing - `pattern`, or the config
-  // record once "config / setup" is clicked - since viewing the setup record
-  // does not disturb the bank/pattern selection underneath it.
+  // whichever Item Detail is actually showing, which is the pattern - the
+  // setup record used to be able to take the pane over, and now has a window
+  // of its own beside it instead.
   bank: null,
   pattern: null,
   view: 'inst',
@@ -99,12 +100,16 @@ function setProgress(id, done, total) {
 function setBusy(busy) {
   state.busy = busy;
   state.stopRequested = false;
-  $('cancel').disabled = !busy;
   for (const id of ['do-dump', 'do-restore', 'do-download', 'do-flash', 'do-inspect']) {
     $(id).disabled = busy;
   }
 }
 
+/* Nothing sets `stopRequested` any more - the Stop button that did is gone, so
+ * a transfer now runs to the end once it starts. The flag and this callback
+ * stay because the transfer loops take a shouldStop of some kind and poll it
+ * between items; that is the seam to re-attach a control to, rather than
+ * threading one back through every loop. */
 const shouldStop = () => state.stopRequested;
 
 /** A yes/no gate for something that cannot be undone. */
@@ -377,9 +382,10 @@ function fileByName(name) {
 /* ---------- browse: banks and patterns ----------
  *
  * The Contents list used to let you click any item. In its place, Detail
- * itself is the picker: BANK narrows to one 16-pattern block, PATTERN narrows
- * to one slot in it, and the file's config record (if it has one) is reached
- * from the "config / setup" row under Files instead of from a list entry.
+ * itself is the picker: BANK narrows to one 16-pattern block and PATTERN
+ * narrows to one slot in it. The file's config record is not picked at all -
+ * there is only ever one, so it shows itself in its own window rather than
+ * competing with the chart for the pane.
  */
 
 const patternBank = (item) => Math.floor(item.param / protocol.PTRN_PER_BANK);
@@ -392,7 +398,7 @@ const bankLetter = (bank) => protocol.patternLabel(bank * protocol.PTRN_PER_BANK
 
 /** bank index -> Map(slot 0..15 -> Item), built from whichever pattern items
  *  the file actually has. Only a backup has any; everything else reads as no
- *  banks at all, which is what leaves BANK, PATTERN and config / setup empty. */
+ *  banks at all, which is what leaves BANK and PATTERN empty. */
 function patternsByBank(file) {
   const banks = new Map();
   if (!file || file.kind !== library.KIND_BACKUP) return banks;
@@ -449,16 +455,6 @@ function selectPattern(item) {
 function selectView(view) {
   if (state.view === view) return;
   state.view = view;
-  // INST./EXT are controls for the pattern chart, so clicking one always
-  // shows it - if config / setup was on screen, this is how you get back.
-  if (state.pattern) state.detailItem = state.pattern;
-  refreshBrowse();
-}
-
-function selectConfig() {
-  const item = fileConfigItem(state.selectedFile);
-  if (!item) return;
-  state.detailItem = item;
   refreshBrowse();
 }
 
@@ -517,18 +513,66 @@ function refreshViewButtons() {
   extButton.setAttribute('aria-selected', String(state.view === 'ext'));
 }
 
-function refreshConfigEntry() {
-  const button = $('config-entry');
+/** The setup record's lines, less the ext note map.
+ *
+ * Those sixteen notes are already on the chart: every lane in the EXT view is
+ * labelled with its own note, which is where you want to read them - against
+ * the steps that play them. A second copy here is four more lines to keep in
+ * your head, in a column fifteen rem wide that they do not fit.
+ *
+ * Trimmed here rather than in render.configLines, which is pinned byte for
+ * byte against the Python renderer by tests/fixtures/vectors.json and is what
+ * `nava show` prints - a terminal has the width for the table and no EXT view
+ * to read it off instead.
+ *
+ * The one thing the table said that the lane labels cannot is whether the
+ * backup stores a note map at all or these are the power-on defaults standing
+ * in, so that survives on its own line. */
+function configPanelLines(config) {
+  const lines = render.configLines(config);
+  const at = lines.findIndex((line) => line.startsWith('ext track notes'));
+  // Renderer changed shape: show everything rather than silently trimming the
+  // wrong end of it.
+  if (at < 0) return lines;
+  const kept = lines.slice(0, at);
+  while (kept.length && kept[kept.length - 1] === '') kept.pop();
+  if (!config.extNotesStored) kept.push('', 'ext notes      defaults, none stored');
+  return kept;
+}
+
+/** The setup record's own window, under Files when there is room beside the
+ *  chart and under the chart when there is not - see .browse-row.
+ *
+ *  It shows itself rather than waiting to be picked. There is exactly one
+ *  config record per backup and it is what the patterns are played through, so
+ *  there is nothing to choose between and no reason to make reading it cost
+ *  the chart its place on screen. A file that carries none has no window at
+ *  all, rather than an empty one asking to be explained. */
+function refreshConfigPanel() {
+  const group = $('config-group');
   const item = fileConfigItem(state.selectedFile);
-  button.disabled = !item;
-  button.setAttribute('aria-selected', String(item !== null && item === state.detailItem));
+  if (!item) {
+    group.hidden = true;
+    $('config-view').textContent = '';
+    return;
+  }
+  group.hidden = false;
+  let text;
+  try {
+    text = configPanelLines(item.decoded()).join('\n');
+  } catch (error) {
+    // A backup can be truncated mid-record; the file list already says so, and
+    // this says which record rather than rendering half of one.
+    text = `config / setup: ${error.message ?? error}`;
+  }
+  $('config-view').textContent = text;
 }
 
 function refreshBrowse() {
   refreshBankButtons();
   refreshPatternButtons();
   refreshViewButtons();
-  refreshConfigEntry();
+  refreshConfigPanel();
 
   const file = state.selectedFile;
   $('legend').textContent = '';
@@ -596,7 +640,7 @@ function describeFile(file) {
   if (file.errors.length) {
     lines.push('', ...file.errors.map((e) => `bad: ${e}`));
   }
-  if (file.kind === library.KIND_BACKUP) lines.push('', 'Pick a bank and pattern above, or config / setup on the left.');
+  if (file.kind === library.KIND_BACKUP) lines.push('', 'Pick a bank and pattern above.');
   return lines.join('\n');
 }
 
@@ -711,7 +755,6 @@ function redoEdit() {
 
 $('undo-edit').addEventListener('click', undoEdit);
 $('redo-edit').addEventListener('click', redoEdit);
-$('config-entry').addEventListener('click', selectConfig);
 $('view-inst').addEventListener('click', () => selectView('inst'));
 $('view-ext').addEventListener('click', () => selectView('ext'));
 
@@ -1017,10 +1060,6 @@ $('do-flash').addEventListener('click', async () => {
 /* ---------- wiring ---------- */
 
 $('enable-midi').addEventListener('click', enableMidi);
-$('cancel').addEventListener('click', () => {
-  state.stopRequested = true;
-  status('stopping after the current item…');
-});
 
 // Leaving mid-transfer means an interrupted flash or a half-written restore, so
 // the tab asks - it is the one case where the browser's generic warning is the

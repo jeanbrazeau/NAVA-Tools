@@ -43,7 +43,9 @@ shifts under you.
 two machines sharing a sequencer: one drives the analogue voices, the other sends
 notes on the ext channel. EXT lists all sixteen lanes, so T7 is in the same place
 in every pattern, labelled with note names when the backup carries a config
-record to read the note map from. An ext loop shorter than the pattern repeats
+record to read the note map from. They count up the page — T1 at the bottom, T16
+at the top — which is the direction the kit next door is stacked in, BASS DRUM at
+the foot and CRASH over everything. An ext loop shorter than the pattern repeats
 against the kit — what `extStepCount` does on the hardware — with a dashed rule
 marking where it starts over.
 
@@ -51,8 +53,16 @@ Loud and soft are compared against each instrument's own two levels, not a globa
 threshold: the 909's table is not uniform, and CH at 80 is soft while BD at 50 is
 loud.
 
-**config / setup** under the file list shows tempo, sync, channels, velocities
-and the ext note map, and is disabled for a file that carries no config record.
+**Config / setup** is its own window showing tempo, sync, channels, velocities
+and the ext note map. It shows itself rather than waiting to be picked: there
+is exactly one config record per backup and it is what the patterns are played
+through, so there is nothing to choose between and no reason for reading it to
+cost the chart its place on screen — which is what it used to do, as a row
+under the file list that swapped the Detail pane over. A file carrying no
+config record gets no window at all rather than an empty one. Wide, it sits
+under Files in the narrow column, beside the chart; stacked, it goes to the
+bottom under the pattern editor, because on one column the editor is what you
+came for and a wall of setup text above it is a wall to scroll past.
 Track records are not viewable here — they are read, restored and saved like
 everything else, but `nava show FILE.syx "track 3"` is what prints one.
 
@@ -175,9 +185,33 @@ neither is reversible, and the unit gives no confirmation of its own. A firmware
 image and a backup are told apart by their SysEx header, so the page refuses to
 flash a backup or restore a firmware image.
 
-Stop cancels between items, never mid-item, so a cancel cannot leave a
-half-written record on the device. A flash is paced by scheduled MIDI timestamps
-rather than by a timer, so switching tabs mid-flash does not stall it.
+There is no way to stop a transfer once it starts — the Stop button is gone, so
+a dump, restore or flash runs to the end. The loops still poll a `shouldStop`
+between items, which is where a control would reattach; nothing sets it. A flash
+is paced by scheduled MIDI timestamps rather than by a timer, so switching tabs
+mid-flash does not stall it.
+
+The readouts give way in stages as the column narrows. At 900 the word SCALE
+goes — the row has 46px of slack left at that point and the label and its gap
+are 37 of them, and four buttons reading 1/16, 1/32, 1/16t and 1/8t do not need
+telling what they are. It stays gone below that rather than coming back, since
+a label that vanished at 900 and reappeared at 850 would draw more attention
+than the label does; the strip keeps its aria-label, so a screen reader is not
+affected.
+
+Where the readouts stop fitting on one line they fold into a square rather than
+wrapping wherever they run out — SHUFFLE and LAST STEP on the top line, FLAM and
+SCALE under them, each pair keeping the edge it had. Nothing moves sideways on
+the way from one line to two; the row only doubles up.
+
+That happens twice, because the panel gets a second wind in between. From 761 to
+850 the Detail column is at its narrowest — two columns still, with the file
+list taking its 15rem. Below 760 the panel goes to one column and Detail takes
+the whole window, so the row fits again, until 612 brings the square back.
+
+The status bar is pinned to the bottom of the window and carries the connection
+state in its left corner — whether the ports are open is not something to scroll
+looking for, and it was competing with the panel tabs up in the header.
 
 ## The command line tool
 

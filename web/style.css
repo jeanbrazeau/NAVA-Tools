@@ -32,6 +32,12 @@
      height would leave INST. three rows short of the column it sits beside. */
   --pattern-step: 22px;
   --ruler: 10px;            /* the numberless band the playhead handle sits in */
+  /* The pinned status bar's height, read by both the bar itself and the room
+     body leaves below its content so the bar never covers the last line. */
+  --statusbar: 24px;
+  /* Every box in the readouts row under the chart, so they stay one height
+     whether the row is on one line or folded into two. */
+  --readout-h: 22px;
   --grid-height: calc(var(--pattern-step) * 16);
   --font: ui-monospace, "SF Mono", Menlo, Consolas, "DejaVu Sans Mono", monospace;
   --dither: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='2' height='2' shape-rendering='crispEdges'%3E%3Crect width='1' height='1'/%3E%3Crect x='1' y='1' width='1' height='1'/%3E%3C/svg%3E");
@@ -67,8 +73,11 @@ body {
   zoom: var(--scale);
   margin: 0;
   /* The viewport, in this element's own pre-scale units: 100vh would come out a
-     fifth short and leave the status bar floating above the bottom. */
+     fifth short and leave the page ending above the bottom of the window. */
   min-height: calc(100vh / var(--scale));
+  /* The status bar is fixed, so it is out of the flow and would sit on top of
+     whatever the page ends with. This is the room it needs back. */
+  padding-bottom: var(--statusbar);
   display: flex;
   flex-direction: column;
   color: var(--ink);
@@ -199,9 +208,29 @@ main {
 .row > * { flex: 1 1 20rem; min-width: 15rem; }
 
 /* The chart is the reason this panel exists, so it gets the room: the file
-   list is a picker and stops being more useful past its content width. */
-.browse-row > .col-files { flex: 0 1 15rem; }
-.browse-row > .col-detail { flex: 4 1 34rem; }
+   list is a picker and stops being more useful past its content width.
+
+   A grid rather than the flex row the other panels use, because this one has
+   three boxes in two different arrangements and flex can only reorder within a
+   line. Wide, the setup record sits under Files in the narrow column, beside
+   the chart it belongs to rather than on top of it. Stacked, it goes to the
+   bottom - under the pattern editor rather than between the file list and it,
+   because on one column the editor is what you came for and a wall of setup
+   text above it is a wall to scroll past. Named areas say both in two lines. */
+.browse-row {
+  display: grid;
+  grid-template-columns: minmax(0, 15rem) minmax(0, 1fr);
+  grid-template-areas:
+    "files  detail"
+    "config detail";
+  align-content: start;
+}
+.browse-row > .col-files { grid-area: files; }
+.browse-row > .col-config { grid-area: config; }
+.browse-row > .col-detail { grid-area: detail; }
+/* The row's own boxes size themselves; the flex sizing on .row > * is inert
+   under grid, but min-width would still floor the columns. */
+.browse-row > * { min-width: 0; }
 
 /* GEM group boxes: a hairline rectangle with the label sitting on the edge. */
 fieldset.group {
@@ -211,8 +240,13 @@ fieldset.group {
   min-width: 0;
 }
 section > fieldset.group:last-child { margin-bottom: 0; }
+/* Centred on the box's top rule rather than sitting at its left corner. An
+   auto margin either side is how a legend is moved along its own edge - it is
+   laid out on the border, not in the flow, so text-align on the fieldset does
+   not reach it. */
 fieldset.group legend {
   padding: 0 6px;
+  margin-inline: auto;
   background: var(--face);
 }
 fieldset.group p { margin: 0 0 8px; }
@@ -458,12 +492,10 @@ u { text-decoration-thickness: 1px; text-underline-offset: 2px; }
   left: 1px;
 }
 
-/* The Files column's one permanent extra row. It does not open a picker like
-   Save does, it switches Detail to the setup record, so it reads as a
-   selectable row - inverted when chosen - rather than a command. */
-.config-btn { display: block; width: 100%; margin-top: 8px; text-align: left; }
-.config-btn[aria-selected="true"] { background: var(--ink); color: var(--paper); }
-.config-btn[aria-selected="true"]:hover { background: var(--ink); }
+/* The setup record's own window. Shorter than the chart's paper, because a
+   config record is a dozen lines and a 12rem floor would leave it mostly
+   blank; it still grows to whatever it holds. */
+.col-config #config-view { min-height: 0; }
 
 /* ---------- paper areas ---------- */
 
@@ -670,7 +702,9 @@ td.cell.editable.loud:hover { box-shadow: inset 0 0 0 2px var(--paper); }
 .playhead-handle:hover, .playhead-handle:active { font-size: 16px; top: -5px; }
 
 
-.chart-readouts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+/* The gap is read back by .readout-break's negative margin, which cancels one
+   of them - change it here and change it there. */
+.chart-readouts { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
 .readout {
   border: 1px solid var(--ink);
   padding: 1px 7px;
@@ -678,14 +712,61 @@ td.cell.editable.loud:hover { box-shadow: inset 0 0 0 2px var(--paper); }
   gap: 7px;
   align-items: baseline;
   font-size: 11px;
+  /* One height for every box, rather than each line finding its own. LAST STEP
+     is the tallest naturally - its value is a size up from the labels - so on
+     one line the others stretched to it and matched, and the moment the row
+     folded in two the line without it came out shorter and the square had two
+     different rectangle heights. This is that natural height, written down. */
+  min-height: var(--readout-h);
 }
 .readout-label { letter-spacing: 0.08em; opacity: 0.75; }
 .readout-value { font-size: 13px; }
-/* LAST STEP hard right, on the corner under the end of the grid: it is the
-   readout for the playhead, and the playhead lives at the right-hand end of
-   the same rectangle. Pushed rather than positioned, so the boxes before it
-   still wrap normally on a narrow window. */
-.readout-last { margin-left: auto; }
+/* A readout holding a control rather than a number centres its row instead.
+   A dial and a strip of divisions are boxes with no text on the baseline the
+   label sits on, so baseline alignment leaves the label riding high above
+   them. The text readouts keep it - LAST STEP's small label and large number
+   do share a baseline, and that is what lines those two up. */
+.readout-control { align-items: center; }
+/* SCALE centred in the slack, and LAST STEP hard right on the corner under the
+   end of the grid - the readout for the playhead, which lives at the
+   right-hand end of the same rectangle.
+
+   Two auto margins, both on the left, and that is the whole trick: flexbox
+   splits the spare pixels equally between every auto margin on the line, so
+   one before SCALE and one before LAST STEP puts the same gap either side of
+   SCALE - centring it - while carrying LAST STEP to the far end.
+
+   The obvious alternative, an auto margin either side of SCALE and none on
+   LAST STEP, centres just as exactly but breaks the moment the row wraps: with
+   no auto margin of its own, LAST STEP lands hard LEFT on the new line, which
+   is the one place it must never be. Three auto margins do not work either -
+   the slack still splits evenly, but two of the three land in the same gap and
+   SCALE sits off to one side. */
+.readout-mid, .readout-last { margin-left: auto; }
+/* Off everywhere but the band below - see the media query at the foot. */
+.readout-break { display: none; }
+/* SCALE brings its own bordered strip, so the readout box around it would be a
+   second rule enclosing the first. The label keeps its left padding pulled off
+   so the row still starts on the same line as the boxes either side. */
+/* SCALE brings its own bordered strip, so the readout box around it would be a
+   second rule enclosing the first. The border stays as transparent rather than
+   being removed so the label still starts on the same line as the boxes either
+   side; the vertical half of it goes, along with the vertical padding, so the
+   strip can be the full height of its box and its rectangle lines up with the
+   SHUFFLE and FLAM rectangles beside it rather than sitting 3px short inside
+   an invisible one. `stretch` is what makes it take that height - the row
+   stretches the boxes to a common height already, and this passes it on. */
+.readout-bare {
+  border-color: transparent;
+  border-block-width: 0;
+  padding-block: 0;
+  padding-left: 0;
+  align-items: stretch;
+}
+/* Stretch is for the strip, not for the word beside it: a stretched label is a
+   full-height box with its text sitting at the top of it, which read as the
+   label riding an inch high. */
+.readout-bare .readout-label { align-self: center; }
 
 /* SHUFFLE and FLAM as the eight-position dials they are on the panel. Round
    here against a rulebook that rounds nothing, because these are the one thing
@@ -696,13 +777,12 @@ td.cell.editable.loud:hover { box-shadow: inset 0 0 0 2px var(--paper); }
    land on the dial rather than on nothing. grid.js hit-tests the pointer's x
    against the circle centres, so the gaps belong to whichever is nearer.
 
-   align-self, because .readout aligns its children on the baseline and a row
-   of circles has no text in it to have one. */
+   The row is centred against its label by .readout-control, not from here: a
+   row of circles has no text on the baseline the label sits on. */
 .dial {
   display: flex;
   gap: 4px;
   align-items: center;
-  align-self: center;
   padding: 4px 2px;
   margin: -4px 0;   /* the slack must not make the readout box taller */
 }
@@ -734,12 +814,11 @@ button.lamp:focus-visible { outline: 1px solid var(--ink); outline-offset: 2px; 
    are a list to pick from rather than a knob to sweep, so unlike the dials
    beside it this is four buttons in a strip, and the chosen one is an invert -
    which is how GEM said "this one", and what the pattern column and the
-   window tabs already do. The strip carries the rules between the divisions;
-   the box around it is the .readout's own border. */
+   window tabs already do. The strip draws its own border and the rules between
+   the divisions, which is why its readout has none - see .readout-bare. */
 .seg {
   display: flex;
   align-items: stretch;
-  align-self: center;
   border: 1px solid var(--ink);
   background: var(--paper);
 }
@@ -849,14 +928,40 @@ dialog::backdrop {
 
 /* ---------- status line ---------- */
 
+/* Pinned to the window, not parked at the end of the page. A status bar that
+   scrolls away is a status bar you have to go looking for, and what it carries
+   - whether the ports are open, what the last transfer did - is exactly what
+   you want in view while working somewhere else on the page.
+
+   Fixed inside a zoomed body: `zoom` scales the fixed box along with
+   everything else, so the height reserved for it below has to be in the same
+   pre-scale units the bar itself is measured in, which is what --statusbar is
+   for. inset rather than left/right/bottom separately - it spans the window. */
 .statusbar {
+  position: fixed;
+  inset: auto 0 0 0;
+  z-index: 10;
   display: flex;
   align-items: center;
+  /* One line, always. The height below is reserved as a fixed number, so a bar
+     that wrapped would grow past what the page has left for it and sit on the
+     content - which is what a narrow window did. */
+  flex-wrap: nowrap;
   gap: 12px;
   background: var(--paper);
   border-top: 1px solid var(--ink);
   padding: 3px 8px;
-  min-height: 24px;
+  height: var(--statusbar);
+}
+/* The connection state and the link are fixed facts and keep their width; the
+   transient message is the one thing here of unknown length, so it is the one
+   that gives way. */
+.statusbar > #connection, .status-right { flex: none; }
+#status {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .status-right { margin-left: auto; display: flex; align-items: center; gap: 12px; }
 
@@ -878,12 +983,78 @@ dialog::backdrop {
   }
 }
 
+/* The last thing that can go before the row has to break. At 900 the readouts
+   have 46px of slack left and are losing 30 for every 30 the window loses; the
+   word SCALE and the gap after it are 37 of them, and the four divisions beside
+   it read as a scale without being told - 1/16 and 1/8t are not ambiguous.
+   The strip keeps its aria-label, so nothing is lost to a screen reader.
+
+   Hidden from here down rather than only in a band: it is worth more width the
+   narrower things get, and a label that vanished at 900 and came back at 850
+   would draw more attention than the label does. */
+@media (max-width: 900px) {
+  .readout-bare .readout-label { display: none; }
+  /* With the label gone the box is nothing but the strip, so the padding that
+     held the strip off the box's right edge is holding it off nothing - seven
+     invisible pixels between SCALE and whatever follows it. */
+  .readout-bare { padding-right: 0; }
+}
+
+/* Where the readouts stop fitting on one line, they fold into a square rather
+   than wrapping wherever they run out:
+
+       SHUFFLE                LAST STEP
+       FLAM                       SCALE
+
+   Each pair keeps the edge it had - the dials down the left, the two things
+   that report the pattern's shape down the right - so nothing moves sideways
+   on the way from one line to two, it only doubles up.
+
+   This happens twice, because the panel gets a second wind in between. From
+   761 to 850 Detail is at its narrowest, with the file list taking its 15rem
+   out of the width. Below 760 the panel goes to one column and Detail takes
+   the whole window, so the row fits again - until 612, where it does not, and
+   the same square comes back.
+
+   The order values are what fold it: the break is a zero-height item claiming
+   a whole line, which is how flexbox is asked for a break, and the two on
+   either side of it are ordered around it. Its negative margin takes back the
+   row gap the empty line would otherwise add. The auto margins already on
+   LAST STEP and SCALE put each of them at the right-hand end of its own line
+   without a rule of their own. */
+@media (min-width: 761px) and (max-width: 850px), (max-width: 612px) {
+  .readout-shuffle { order: 0; }
+  .readout-last { order: 1; }
+  .readout-break {
+    order: 2;
+    display: block;
+    flex-basis: 100%;
+    height: 0;
+    margin-bottom: -4px;   /* one .chart-readouts gap, cancelled */
+  }
+  .readout-flam { order: 3; }
+  .readout-mid { order: 4; }
+}
+
 @media (max-width: 760px) {
   .row { flex-direction: column; }
   .row > * { width: 100%; }
+  /* One column, and the setup record moves to the bottom - under the pattern
+     editor rather than above it. See .browse-row. */
+  .browse-row {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      "files"
+      "detail"
+      "config";
+  }
   /* The tabs and the MIDI accessories stop fitting on one line well before the
      panels do, so the header stacks first. */
   .shell-head { flex-wrap: wrap; }
-  .shell-status { margin-left: 0; padding-bottom: 8px; }
+  /* The auto margin stays, so Enable MIDI keeps the right edge whether the
+     accessories are still sharing the tabs' line or have wrapped below them.
+     Left-aligning it under the tabs put the one button in the header nowhere
+     in particular; against the right edge it is where it was, one line down. */
+  .shell-status { padding-bottom: 8px; }
   .tabs { flex-wrap: wrap; }
 }

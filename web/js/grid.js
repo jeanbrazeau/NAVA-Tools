@@ -343,8 +343,13 @@ export function patternChart(pattern, {
 
     // All sixteen ext lanes, not just the used ones, for the same reason the
     // voices are all present: T7 should be in the same place in every pattern.
+    //
+    // Counted up the page, T1 at the bottom and T16 at the top, which is the
+    // direction the kit next door is stacked in - BASS DRUM at the foot,
+    // CRASH over everything. A track list that started at the top and counted
+    // down was the one thing on this chart reading the other way.
     extBody = el('tbody');
-    for (let track = 0; track < NBR_EXT_TRACK; track += 1) {
+    for (let track = NBR_EXT_TRACK - 1; track >= 0; track -= 1) {
       const note = config ? noteName(config.extNotes[track]) : null;
       addLane(
         extBody, key('ext', track), `T${track + 1}${note ? `  ${note}` : ''}`, 'chart-row chart-ext',
@@ -372,7 +377,12 @@ export function patternChart(pattern, {
     // nothing.
     const gridWrap = el('div', 'chart-grid-wrap');
     gridWrap.appendChild(table);
-    const boundary = `calc(var(--corner) + (100% - var(--corner)) * ${steps} / 16)`;
+    // Clamped an inch inside the right edge. At LAST STEP 16 the boundary is
+    // the grid's own right edge, and the rule straddles it - half of a 2px
+    // line hanging outside the chart, which is all .chart's overflow-x needs
+    // to grow a horizontal scrollbar over a pixel of nothing. One pixel in,
+    // the rule still lands on the grid's own border, where it reads the same.
+    const boundary = `min(calc(var(--corner) + (100% - var(--corner)) * ${steps} / 16), 100% - 1px)`;
     const playhead = el('div', 'playhead');
     playhead.style.left = boundary;
     gridWrap.appendChild(playhead);
@@ -855,9 +865,13 @@ function relightScale(wrap, value) {
 function readouts(pattern, editable = false) {
   const wrap = el('div', 'chart-readouts');
   const boxes = [
-    ['SHUFFLE', dial('shuffle', 'SHUFFLE', pattern.shuffle, editable)],
-    ['FLAM', dial('flam', 'FLAM', pattern.flam, editable)],
-    ['SCALE', scalePicker(pattern.scale, editable)],
+    // The two dials are named apart because the narrow layouts order them
+    // independently - see the .readout-* order rules in the media queries.
+    ['SHUFFLE', dial('shuffle', 'SHUFFLE', pattern.shuffle, editable), 'readout readout-control readout-shuffle'],
+    ['FLAM', dial('flam', 'FLAM', pattern.flam, editable), 'readout readout-control readout-flam'],
+    // No box of its own: the divisions are already a bordered strip, and a
+    // second rule around them was a box drawn around a box.
+    ['SCALE', scalePicker(pattern.scale, editable), 'readout readout-control readout-bare readout-mid'],
   ];
   if (pattern.extLength !== pattern.length) boxes.push(['EXT STEPS', String(pattern.extSteps)]);
   if (pattern.groupLength) {
@@ -869,6 +883,9 @@ function readouts(pattern, editable = false) {
     box.appendChild(el('span', 'readout-label', label));
     box.appendChild(typeof value === 'string' ? el('span', 'readout-value', value) : value);
     wrap.appendChild(box);
+    // Where the row is told to break rather than left to wrap where it likes.
+    // Inert at every width but the one band that needs it - see .readout-break.
+    if (label === 'SHUFFLE') wrap.appendChild(el('span', 'readout-break'));
   }
   return wrap;
 }

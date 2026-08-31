@@ -146,13 +146,23 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 
         self.send_error(404, "Not Found")
 
+    def end_headers(self) -> None:
+        # Every response, not just the ones respond() builds. The files under
+        # web/ are served by SimpleHTTPRequestHandler, which sends only
+        # Last-Modified and no Cache-Control, so a browser is free to keep
+        # serving an edited app.js or style.css from cache for the rest of the
+        # session - and it does. The failure is silent and looks exactly like
+        # the edit not working: a stale app.js against a fresh index.html threw
+        # on a button that no longer existed, and the page came up blank with
+        # nothing in the console. Debug bytes are regenerated per run and the
+        # page is rewritten per request, so nothing here is worth caching.
+        self.send_header("Cache-Control", "no-store")
+        super().end_headers()
+
     def respond(self, code: int, content_type: str, payload: bytes, *, body: bool) -> None:
         self.send_response(code)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(payload)))
-        # Debug bytes are regenerated per run and the page is rewritten per
-        # request; a cached copy of either is a confusing morning.
-        self.send_header("Cache-Control", "no-store")
         self.end_headers()
         if body:
             self.wfile.write(payload)
