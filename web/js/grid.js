@@ -59,7 +59,7 @@ const el = (tag, className, text) => {
 };
 
 /** The chart for one pattern: INST./EXT views over one 16-column grid, plus the
- *  step strip that shows whichever lane is picked.
+ *  the loop-length playhead.
  *
  * Pass `payload` - the record's raw bytes - to make the cells editable and to
  * turn on the LAST STEP playhead (see below). Each edit writes into those
@@ -134,7 +134,6 @@ export function patternChart(pattern, {
   let rows;
   let cells;
   let owners;
-  let strip;
   let numCells;
   let stroke = null;       // a cell-painting gesture in progress
   let lengthDrag = null;   // a LAST STEP drag in progress
@@ -208,12 +207,12 @@ export function patternChart(pattern, {
     for (const [id, row] of rows) {
       row.setAttribute('aria-selected', String(id === key(view, chosen[view])));
     }
-    drawStrip(strip, current, view, chosen[view], config);
   };
 
   const pick = (kind, index) => {
-    // ACCENT is editable but not a lane the step strip can show - it is not an
-    // instrument - so clicking it does not move the selection.
+    // ACCENT is editable but is not a lane in the sense the rest of the chart
+    // means - it accents the machine rather than playing - so clicking it does
+    // not move the selection.
     if (kind === 'acc') return;
     view = kind;
     chosen[kind] = index;
@@ -244,8 +243,8 @@ export function patternChart(pattern, {
     return current.steps;
   };
 
-  /** Build the table, the LAST STEP playhead, the readouts and the step strip
-   *  from `current`, replacing whatever draw() built last time. Called once at
+  /** Build the table, the LAST STEP playhead and the readouts from `current`,
+   *  replacing whatever draw() built last time. Called once at
    *  the start and again after any edit that changes `steps` - the only kind
    *  that moves which columns are struck through. */
   const draw = () => {
@@ -254,10 +253,14 @@ export function patternChart(pattern, {
 
     table = el('table', 'chart-grid');
     const head = el('tr');
-    head.appendChild(el('th', 'chart-corner', 'STEP'));
+    head.appendChild(el('th', 'chart-corner'));
     numCells = [];
     for (let i = 0; i < NBR_STEP; i += 1) {
-      const cell = el('th', 'chart-num', String(i + 1));
+      // No number in it. The heavier rule every fourth step already makes the
+      // columns countable, and the row still has to exist: it carries those
+      // rules, it is what the playhead's hit-testing looks up by data-col, and
+      // it is the gutter the handle sits in above the grid.
+      const cell = el('th', 'chart-num');
       cell.dataset.col = String(i);
       if (i % 4 === 0) cell.classList.add('beat');
       if (i >= steps) cell.classList.add('past');
@@ -355,9 +358,6 @@ export function patternChart(pattern, {
     // glance across the whole grid, but a drag is not pixel-precise, and the
     // readout is where a glance confirms the exact number landed on.
     body.appendChild(readouts(current));
-
-    strip = el('div', 'step-strip');
-    body.appendChild(strip);
 
     if (payload) {
       root.classList.add('editable');
@@ -560,52 +560,6 @@ function readouts(pattern) {
     wrap.appendChild(box);
   }
   return wrap;
-}
-
-/* The row of 16 keys under the panel, showing one lane at a time - which is all
- * the machine can show, because INSTRUMENT SELECT picks one. */
-function drawStrip(strip, pattern, view, index, config) {
-  strip.replaceChildren();
-
-  const name = el('div', 'strip-name');
-  name.appendChild(el('span', 'strip-caption', view === 'inst' ? 'INSTRUMENT' : 'EXT TRACK'));
-  name.appendChild(el('span', 'strip-value', laneName(view, index, config)));
-  strip.appendChild(name);
-
-  const keys = el('div', 'strip-keys');
-  for (let i = 0; i < NBR_STEP; i += 1) {
-    const cell = el('div', 'key');
-    if (i % 4 === 0) cell.classList.add('group');
-    cell.appendChild(el('span', 'key-num', String(i + 1)));
-    const lamp = el('span', 'lamp');
-    if (i < pattern.steps) {
-      if (view === 'inst') {
-        const step = pattern.step(index, i);
-        if (step.on) {
-          lamp.classList.add(pattern.level(index, i) === 'accent' ? 'loud' : 'soft');
-          if (step.flam) cell.classList.add('flam');
-        }
-      } else {
-        const state = pattern.extStep(index, i % pattern.extSteps);
-        if (state !== 'off') lamp.classList.add(state === 'accent' ? 'loud' : 'soft');
-      }
-    } else {
-      cell.classList.add('past');
-    }
-    cell.appendChild(lamp);
-    keys.appendChild(cell);
-  }
-  strip.appendChild(keys);
-}
-
-function laneName(view, index, config) {
-  if (view === 'ext') {
-    const note = config ? `  ${noteName(config.extNotes[index])}` : '';
-    return `T${index + 1}${note}`;
-  }
-  if (index === TRIG) return 'TRIG';
-  const found = CHART_ROWS.find(([i]) => i === index);
-  return found ? found[1] : INSTRUMENT_NAMES[index];
 }
 
 export function chartLegend(editable = false) {

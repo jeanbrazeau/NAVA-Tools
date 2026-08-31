@@ -460,14 +460,14 @@ table.chart-grid {
 }
 /* Sized to the longest label the chart prints, so the grid gets the rest. */
 .chart-corner { width: var(--corner); letter-spacing: 0.12em; }
+/* A thin ruler band rather than a row of numbers: it carries the beat rules,
+   gives the playhead handle somewhere to sit above the grid, and keeps the
+   column that the handle's hit-testing reads. */
 .chart-num {
   width: auto;
-  text-align: center;
-  padding: 0 0 2px;
-  font-size: 11px;
-  opacity: 0.8;
+  height: 10px;
+  padding: 0;
 }
-.chart-num.past { opacity: 0.35; }
 .chart-label {
   border: 1px solid var(--ink);
   border-right: none;
@@ -582,32 +582,6 @@ td.cell.editable.loud:hover { box-shadow: inset 0 0 0 2px var(--paper); }
 }
 .readout-label { letter-spacing: 0.08em; opacity: 0.75; }
 .readout-value { font-size: 13px; }
-
-/* The row of 16 keys under the panel, showing one instrument at a time - which
-   is all the machine can show, because INSTRUMENT SELECT picks one. */
-.step-strip { margin-top: 10px; border-top: 1px solid var(--ink); padding-top: 8px; }
-.strip-name { display: flex; gap: 8px; align-items: baseline; margin-bottom: 5px; }
-.strip-caption { font-size: 11px; letter-spacing: 0.08em; opacity: 0.75; }
-.strip-value { letter-spacing: 0.06em; }
-.strip-keys { display: flex; gap: 3px; }
-.key {
-  flex: 1 1 0;
-  min-width: 0;
-  border: 1px solid var(--ink);
-  padding: 2px 0 3px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 3px;
-}
-.key.group { margin-left: 5px; }
-.key:first-child { margin-left: 0; }
-.key-num { font-size: 10px; opacity: 0.7; }
-.key.past { opacity: 0.35; }
-.lamp { width: 12px; height: 5px; border: 1px solid var(--ink); }
-.lamp.loud { background: var(--ink); }
-.lamp.soft { background-image: var(--dither); background-size: 2px 2px; }
-.key.flam .lamp { box-shadow: 0 0 0 2px var(--paper), 0 0 0 3px var(--ink); }
 
 /* A GEM progress bar: solid ink filling a white trough, no animation. */
 progress {
