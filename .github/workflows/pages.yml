@@ -9,24 +9,21 @@
 # no bundler output to diverge from the source, and `python3 -m http.server` in
 # web/ is an exact local copy of production.
 #
-# NOT PUBLISHED ON MERGE. This runs when someone presses "Run workflow" on the
-# Actions tab, and when the firmware repository's release workflow dispatches
-# it after committing a new image into web/firmware/ - so a firmware release
-# redeploys the site, but merging to master deploys nothing.
-#
-# To publish on every green master build instead, uncomment the workflow_run
-# trigger below. It waits for Tests rather than running in parallel with it: the
-# site talks to a bootloader, and a page that fails its own protocol vectors
-# should not be the one people reach.
+# PUBLISHED ON EVERY GREEN MASTER BUILD. The workflow_run trigger fires when
+# Tests finishes on master and deploys only if it passed - the site talks to a
+# bootloader, and a page that fails its own protocol vectors should not be the
+# one people reach. It also still runs when someone presses "Run workflow" on
+# the Actions tab, and when the firmware repository's release workflow
+# dispatches it after committing a new image into web/firmware/.
 
 name: Pages
 
 on:
   workflow_dispatch:
-  # workflow_run:
-  #   workflows: ["Tests"]
-  #   branches: [master]
-  #   types: [completed]
+  workflow_run:
+    workflows: ["Tests"]
+    branches: [master]
+    types: [completed]
 
 permissions:
   contents: read
