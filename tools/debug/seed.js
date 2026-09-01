@@ -28,18 +28,22 @@ function bar() {
   const el = document.createElement('div');
   Object.assign(el.style, BAR);
   const label = document.createElement('span');
-  const button = document.createElement('button');
-  button.textContent = 'reseed';
-  Object.assign(button.style, {
-    font: 'inherit', background: '#fff', color: '#000',
-    border: '1px solid #fff', padding: '0 6px', cursor: 'pointer',
-  });
-  el.append(label, button);
+  const reseed = document.createElement('button');
+  reseed.textContent = 'reseed';
+  const clear = document.createElement('button');
+  clear.textContent = 'clear stored';
+  for (const button of [reseed, clear]) {
+    Object.assign(button.style, {
+      font: 'inherit', background: '#fff', color: '#000',
+      border: '1px solid #fff', padding: '0 6px', cursor: 'pointer',
+    });
+  }
+  el.append(label, reseed, clear);
   document.body.prepend(el);
   // The bar overlays the top of the page; push the page down by its height so
   // it does not sit on the title bar.
   document.body.style.paddingTop = `${el.offsetHeight}px`;
-  return { say: (text) => { label.textContent = text; }, button };
+  return { say: (text) => { label.textContent = text; }, reseed, clear };
 }
 
 async function fetchFile({ name }) {
@@ -70,6 +74,9 @@ async function seed(say) {
   if (!response.ok) throw new Error(`manifest: ${response.status}`);
   const { files } = await response.json();
   const loaded = await Promise.all(files.map(fetchFile));
+  // Seeded files now persist like any other drop, keyed by name - dropping
+  // the same manifest again overwrites each record rather than piling up a
+  // second copy beside it.
   drop([...loaded].reverse());
   // Browsing is the reason to seed, so land there rather than on Device. The
   // app's own tab button, so the panel switch stays the app's business.
@@ -79,7 +86,20 @@ async function seed(say) {
 }
 
 const ui = bar();
-ui.button.addEventListener('click', () => run());
+ui.reseed.addEventListener('click', () => run());
+
+// The name here has to match filestore.js's own DB_NAME by hand: this file
+// imports nothing from web/js, so there is nothing to read it from.
+//
+// The reload waits for the delete to settle rather than racing it: a delete is
+// held back until every open connection closes, and app.js keeps its own open
+// for the life of the page, so reloading straight away could bring the "cleared"
+// page back with everything still in it. blocked and error reload too - a stuck
+// delete should not leave the button looking dead.
+ui.clear.addEventListener('click', () => {
+  const request = indexedDB.deleteDatabase('nava-tools');
+  request.onsuccess = request.onblocked = request.onerror = () => location.reload();
+});
 
 async function run() {
   try {

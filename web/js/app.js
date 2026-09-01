@@ -15,6 +15,7 @@
 import * as protocol from './protocol.js';
 import * as bootloader from './bootloader.js';
 import * as edit from './edit.js';
+import * as filestore from './filestore.js';
 import * as grid from './grid.js';
 import { History } from './history.js';
 import * as ihex from './ihex.js';
@@ -332,8 +333,14 @@ function portsReady(needInput, logId) {
  * place to put one - so this is the best available fact rather than a compile
  * time read out of the file: the release date from firmware/index.json for the
  * deployed image, and the file's own modified time for one off a disk. Absent
- * is a legitimate answer and prints nothing. */
-function addFile(name, bytes, dated = null) {
+ * is a legitimate answer and prints nothing.
+ *
+ * `persist` is false for exactly one caller: the firmware bundled with this
+ * page, which loadDeployedFirmware() re-fetches on every visit and would
+ * otherwise pile a fresh copy into the database each time it is offered.
+ * Every other file - dropped, picked, dumped, or replayed from the database
+ * at startup - stores as-is, keyed by its (possibly hex-converted) name. */
+function addFile(name, bytes, dated = null, persist = true) {
   // A .hex is converted on the way in rather than offered as a third kind of
   // file: what the bootloader accepts is the .syx, and every path downstream
   // takes bytes that are already encoded.
@@ -355,6 +362,11 @@ function addFile(name, bytes, dated = null) {
   }
   for (const item of file.items) loadedSnapshots.set(item, item.payload.slice());
   state.files = [file, ...state.files.filter((f) => f.name !== label)];
+  if (persist) {
+    // Fire-and-forget: filestore never rejects, and nothing here needs to wait
+    // on the database before the file is usable on screen.
+    filestore.put({ name: label, bytes: data, dated: file.dated ?? null, added: Date.now() });
+  }
   // Firmware never shows under Patterns - it lands in the Device tab's image
   // picker, and the status line is the only trace the drop leaves here. If it
   // replaced a listed file of the same name, the selection has to let go too.
@@ -467,7 +479,11 @@ function commitRename(file, typed) {
     status(`${named} is already loaded — not renamed`);
     return;
   }
+  const previous = file.name;
   file.name = named;
+  // Harmless on a name filestore has never stored, so this does not need to
+  // check whether the file was persisted in the first place.
+  filestore.rename(previous, named);
   status(`renamed to ${named}`);
 }
 
@@ -977,20 +993,60 @@ $('save-file').addEventListener('click', async () => {
   // past this point should mark it edited again, not leave the marker
   // pointing at bytes that were true before the save.
   for (const item of file.items) loadedSnapshots.set(item, item.payload.slice());
+  // The database now matches what was just written to disk, under the file's
+  // own name - not target.name, which is only what the save dialog was given
+  // and can differ if it was retyped there.
+  filestore.put({ name: file.name, bytes, dated: file.dated ?? null, added: Date.now() });
   refreshFiles();
   status(`wrote ${target.name} (${bytes.length} bytes)`);
 });
 
+$('remove-file').addEventListener('click', async () => {
+  const file = state.selectedFile;
+  if (!file) {
+    status('pick a file to remove');
+    return;
+  }
+  if (file.edited) {
+    status(`${file.name} has unsaved edits — save or undo first`);
+    return;
+  }
+  // Land on whatever took this row's place in the list, or the row above it
+  // if this was the last one - the same "still near where you were" landing a
+  // listbox gives for free.
+  const listed = state.files.filter((f) => f.kind !== library.KIND_FIRMWARE);
+  const index = listed.indexOf(file);
+  state.files = state.files.filter((f) => f !== file);
+  // Awaited, unlike the other filestore calls: the tab closing on the same
+  // click as a Remove must not bring the file back next visit, and a delete
+  // is the one write whose loss reads as the app ignoring what was asked.
+  await filestore.remove(file.name);
+  // History has no notion of a file going away - its entries just point at
+  // this file's items, which still exist and still decode. Undoing one after
+  // its file is removed cannot show it anywhere, but it also cannot corrupt
+  // anything, so it is left alone rather than taught to filter itself.
+  const remaining = state.files.filter((f) => f.kind !== library.KIND_FIRMWARE);
+  selectFile(remaining[index] ?? remaining[index - 1] ?? null);
+  status(`removed ${file.name}`);
+});
+
 /* ---------- demo pattern ---------- */
 
-/** One pattern seeded into Files on startup, so Patterns opens on a working
- *  chart - the detail view demonstrating itself - rather than an empty pane
- *  asking for a file.
+/** One pattern seeded into Files whenever the browser has nothing of its own
+ *  stored, so Patterns opens on a working chart - the detail view
+ *  demonstrating itself - rather than an empty pane asking for a file.
  *
  *  A four-on-the-floor 909 groove, written through edit.js exactly as clicks
  *  would write it and encoded exactly as Save… would encode it, so the seed is
  *  a real backup: everything downstream - the chart, editing, undo, Save…,
- *  even Restore - treats it as one, because it is one. */
+ *  even Restore - treats it as one, because it is one.
+ *
+ *  Not persisted itself: it is called only when the database came back empty,
+ *  so persisting it would just be storing the one file this function already
+ *  knows how to make again. Saving it for real puts it in the database like
+ *  any other file, through the same Save… path everything else uses; Remove
+ *  on it is then a no-op against a database that never had it, and it comes
+ *  back on the next visit only if that visit also finds nothing stored. */
 function seedDemoPattern() {
   const payload = new Uint8Array(protocol.PATTERN_BYTES);
   edit.setLength(payload, 16);
@@ -1007,7 +1063,7 @@ function seedDemoPattern() {
     for (const step of normal) edit.setStep(payload, instrument, step, 'normal');
     for (const step of accent) edit.setStep(payload, instrument, step, 'accent');
   }
-  addFile('Demo Pattern.syx', protocol.encode(protocol.NAVA_PTRN_DMP, 0, payload));
+  addFile('Demo Pattern.syx', protocol.encode(protocol.NAVA_PTRN_DMP, 0, payload), null, false);
 }
 
 /* ---------- drop / pick ---------- */
@@ -1357,7 +1413,9 @@ async function useBundled(manifest, repo) {
   });
   // offer() clears the log and writes the image's own details, so the release
   // it came from is logged after rather than before - it would be wiped.
-  offer(manifest.file, bytes, manifest.published);
+  // Not persisted: this copy is re-fetched from firmware/ on every visit, so
+  // storing it would just be dead weight from the moment it loads.
+  offer(manifest.file, bytes, manifest.published, false);
   log('progress-log', `${manifest.tag}, deployed with this page from ${repo}`);
 
   // The deployed copy is as new as the last time this site was built, and
@@ -1378,8 +1436,8 @@ async function useBundled(manifest, repo) {
   }
 }
 
-function offer(name, bytes, dated = null) {
-  const file = addFile(name, bytes, dated);
+function offer(name, bytes, dated = null, persist = true) {
+  const file = addFile(name, bytes, dated, persist);
   if (!file || file.kind !== library.KIND_FIRMWARE) {
     log('progress-log', `${name} is not a bootloader image — refusing to offer it`, true);
     return;
@@ -1527,8 +1585,37 @@ refreshFiles();
 refreshBrowse();
 refreshUndoButtons();
 updateConnection();
-seedDemoPattern();
-// Last, and not awaited: it is one same-origin fetch that fills the Image
-// picker, and nothing above it should wait on the network to finish painting.
+// Not last: it is one same-origin fetch that fills the Image picker, and
+// nothing above it should wait on the network to finish painting. The restore
+// IIFE below runs after it in source order but is itself async, so it does
+// not wait on this either.
 loadDeployedFirmware();
 $('dump-name').value = defaultDumpName();
+
+// Files kept from a previous visit. Oldest first, since addFile prepends each
+// one onto the front of the list - feeding them in that order leaves the most
+// recently touched file on top, exactly where a fresh drop would land it.
+// Persistence stays off for this call: these bytes are already the
+// database's own, and writing them straight back would just be app.js
+// reading its own mail out loud. This runs after every synchronous step
+// above so a database that fails to open never blocks the rest of the page
+// from painting.
+//
+// The demo pattern is seeded here rather than unconditionally at startup, and
+// only when nothing came back: seeding it first and unconditionally, as it
+// used to be, meant it was always in the database by the time this loop ran,
+// so a Remove of it never stuck and an edited-and-saved copy of it was
+// clobbered by the pristine bytes on every single visit.
+(async () => {
+  try {
+    const records = await filestore.list();
+    for (const record of records) {
+      addFile(record.name, record.bytes, record.dated, false);
+    }
+    if (!records.length) seedDemoPattern();
+  } catch {
+    // A broken database is not a broken page - it opens on the demo chart,
+    // exactly as a browser that has never stored anything would.
+    seedDemoPattern();
+  }
+})();
