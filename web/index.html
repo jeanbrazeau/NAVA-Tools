@@ -34,7 +34,7 @@
       <!-- The order the work usually happens in: pick the ports, move the data,
            then look at what came back. -->
       <button role="tab" aria-selected="true" aria-controls="panel-device" id="tab-device"><u>D</u>EVICE</button>
-      <button role="tab" aria-selected="false" aria-controls="panel-browse" id="tab-browse"><u>B</u>ROWSE</button>
+      <button role="tab" aria-selected="false" aria-controls="panel-browse" id="tab-browse"><u>P</u>ATTERNS</button>
     </nav>
     <div class="shell-status">
       <button id="enable-midi" class="btn default">Enable MIDI</button>
@@ -81,7 +81,7 @@
          repository's release workflow commits the current image beside this
          page, so the app loads it on startup and the picker is already filled.
          Anything else - an older tag, a fork - is still a .syx dropped on the
-         Browse tab, which is how any other file gets in. -->
+         Patterns tab, which is how any other file gets in. -->
     <fieldset class="group">
       <legend>Firmware Image Select</legend>
       <!-- The list and the button it feeds, on one line: the legend already
@@ -96,7 +96,7 @@
         <button id="do-flash" class="btn primary">Flash</button>
       </div>
       <!-- The picker behind the list's "Other…" entry. Its own input rather
-           than the one Browse uses: that one takes several files and drops
+           than the one Patterns uses: that one takes several files and drops
            them into the file list, and this one takes a single image and
            selects it here. -->
       <input id="firmware-input" type="file" accept=".syx,.SYX,.hex,.HEX" hidden>
@@ -157,7 +157,7 @@
              grid is the thing you compare between them, and it starts at the
              same height on both sides. -->
         <label class="field">Backup
-          <select id="restore-file"><option value="">— load a .syx under Browse —</option></select>
+          <select id="restore-file"><option value="">— load a .syx under Patterns —</option></select>
         </label>
         <div class="buttons">
           <button id="restore-all" class="btn" type="button">Select all</button>
