@@ -1,5 +1,5 @@
 /* Files kept in the browser between visits: dropped/picked backups, firmware
- * images, and whatever Save… last wrote to disk. The browser's answer to a
+ * images, and whatever Save last committed. The browser's answer to a
  * data directory, one step up from store.js's remembered settings.
  *
  * IndexedDB rather than localStorage: the records here are .syx bytes, and
@@ -11,7 +11,7 @@
  *
  * This is a cache of what was open in this browser profile, not a backup: it
  * lives in one browser on one machine, and "clear site data" or a private
- * window takes it with it. Save… writing an actual file to disk is still the
+ * window takes it with it. Save as… writing an actual file to disk is still the
  * only copy worth keeping.
  *
  * Every function here is async, opens the database lazily on first use, and

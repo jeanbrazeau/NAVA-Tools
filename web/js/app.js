@@ -423,7 +423,7 @@ $('files').addEventListener('click', (event) => {
  * Escape puts it back.
  *
  * The name is the key everything downstream looks the file up by - the Restore
- * and Image pickers, Save…, and addFile's own replace-by-name - so two files
+ * and Image pickers, Save, and addFile's own replace-by-name - so two files
  * cannot share one, and an empty name is not a name. Either is refused and the
  * old one stays, said in the status line rather than in a dialog, because a
  * rejected rename is not worth a modal.
@@ -888,7 +888,7 @@ function syncEditedFlag(file) {
 }
 
 function announceEditState(file) {
-  status(file.edited ? `${file.name}: edited, not saved` : `${file.name}: back to as loaded`);
+  status(file.edited ? `${file.name}: edited, not saved` : `${file.name}: back to as saved`);
 }
 
 function unsavedEdits() {
@@ -973,31 +973,61 @@ window.addEventListener('keydown', (event) => {
   else redoEdit();
 });
 
-$('save-file').addEventListener('click', async () => {
+/* Save and Save as… share one commit: Save keeps the edits in the browser's
+ * own storage, Save as… writes a .syx to disk as well. Both leave the file in
+ * the same state afterwards, so the split is only about where the bytes went.
+ *
+ * Save is the one that does not touch the disk on purpose: the list is kept
+ * across visits now, so most edits only need to reach the next visit, and a
+ * file dialog on every one of them would be the app asking to export what it
+ * already remembers. */
+
+/** The backup selected under Files, or null after saying why not. */
+function savable() {
   const file = state.selectedFile;
   if (!file || file.kind !== library.KIND_BACKUP) {
     status('pick a backup under Files to save');
-    return;
+    return null;
   }
+  return file;
+}
+
+/** Turn the edits into the file's bytes, stored under its own name, and
+ *  make that the state "not edited" now means. Returns the bytes so Save as…
+ *  can write the very same ones to disk. */
+function commitFile(file) {
   // Rebuilt from the items rather than from the bytes the file arrived as:
   // the items are what the edits went into, and what a Restore would send.
   const bytes = protocol.joinMessages(
     file.items.map((i) => protocol.encode(i.cmd, i.param, i.payload)),
   );
-  const target = await pickSaveFile(file.name);
-  if (!target) return;
-  await writeFile(target, bytes);
   file.edited = false;
   file.bytes = bytes;
   // The saved state is now what "not edited" means for this file - undoing
   // past this point should mark it edited again, not leave the marker
   // pointing at bytes that were true before the save.
   for (const item of file.items) loadedSnapshots.set(item, item.payload.slice());
-  // The database now matches what was just written to disk, under the file's
-  // own name - not target.name, which is only what the save dialog was given
-  // and can differ if it was retyped there.
   filestore.put({ name: file.name, bytes, dated: file.dated ?? null, added: Date.now() });
   refreshFiles();
+  return bytes;
+}
+
+$('save-file').addEventListener('click', () => {
+  const file = savable();
+  if (!file) return;
+  const bytes = commitFile(file);
+  status(`saved ${file.name} in this browser (${bytes.length} bytes) — Save as… writes a .syx`);
+});
+
+$('save-as-file').addEventListener('click', async () => {
+  const file = savable();
+  if (!file) return;
+  const target = await pickSaveFile(file.name);
+  if (!target) return;
+  // Stored under the file's own name, not target.name: the dialog's name is
+  // only what the disk copy is called, and can differ if it was retyped there.
+  const bytes = commitFile(file);
+  await writeFile(target, bytes);
   status(`wrote ${target.name} (${bytes.length} bytes)`);
 });
 
@@ -1037,14 +1067,14 @@ $('remove-file').addEventListener('click', async () => {
  *  demonstrating itself - rather than an empty pane asking for a file.
  *
  *  A four-on-the-floor 909 groove, written through edit.js exactly as clicks
- *  would write it and encoded exactly as Save… would encode it, so the seed is
- *  a real backup: everything downstream - the chart, editing, undo, Save…,
+ *  would write it and encoded exactly as Save would encode it, so the seed is
+ *  a real backup: everything downstream - the chart, editing, undo, Save,
  *  even Restore - treats it as one, because it is one.
  *
  *  Not persisted itself: it is called only when the database came back empty,
  *  so persisting it would just be storing the one file this function already
  *  knows how to make again. Saving it for real puts it in the database like
- *  any other file, through the same Save… path everything else uses; Remove
+ *  any other file, through the same Save path everything else uses; Remove
  *  on it is then a no-op against a database that never had it, and it comes
  *  back on the next visit only if that visit also finds nothing stored. */
 function seedDemoPattern() {
