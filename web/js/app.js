@@ -14,6 +14,7 @@
 
 import * as protocol from './protocol.js';
 import * as bootloader from './bootloader.js';
+import * as edit from './edit.js';
 import * as grid from './grid.js';
 import { History } from './history.js';
 import * as ihex from './ihex.js';
@@ -354,8 +355,16 @@ function addFile(name, bytes, dated = null) {
   }
   for (const item of file.items) loadedSnapshots.set(item, item.payload.slice());
   state.files = [file, ...state.files.filter((f) => f.name !== label)];
-  refreshFiles();
-  selectFile(file);
+  // Firmware never shows under Patterns - it lands in the Device tab's image
+  // picker, and the status line is the only trace the drop leaves here. If it
+  // replaced a listed file of the same name, the selection has to let go too.
+  if (file.kind === library.KIND_FIRMWARE) {
+    if (state.selectedFile?.name === label) selectFile(null);
+    else refreshFiles();
+    status(`${label}: firmware image — pick it under Device`);
+  } else {
+    selectFile(file);
+  }
   return file;
 }
 
@@ -465,13 +474,17 @@ function commitRename(file, typed) {
 function refreshFiles() {
   const list = $('files');
   list.replaceChildren();
-  if (!state.files.length) {
+  // Only what Patterns is for: backups, and anything unrecognised so a broken
+  // file is at least visible. Firmware stays in state.files - the Device tab's
+  // image picker below is fed from there - but has no row here.
+  const listed = state.files.filter((f) => f.kind !== library.KIND_FIRMWARE);
+  if (!listed.length) {
     const empty = document.createElement('li');
     empty.className = 'empty';
     empty.textContent = 'no files loaded';
     list.appendChild(empty);
   }
-  for (const file of state.files) {
+  for (const file of listed) {
     const item = document.createElement('li');
     item.setAttribute('aria-selected', String(file === state.selectedFile));
     // Filename only. A backup summary is a dozen words - putting it beside a
@@ -490,7 +503,7 @@ function refreshFiles() {
   }
 
   fillSelect($('restore-file'), state.files.filter((f) => f.kind === library.KIND_BACKUP),
-    '— load a .syx under Browse —');
+    '— load a .syx under Patterns —');
   // Filling the list can change which file is selected - a dropped backup
   // becomes the chosen one - and the grid under it has to follow, since
   // fillSelect assigns .value in script and that fires no change event.
@@ -503,7 +516,7 @@ function refreshFiles() {
   fillSelect(images, state.files.filter((f) => f.kind === library.KIND_FIRMWARE), null, false);
   // Last in the list, because it is not an image: it is the way to reach one
   // that was never published - a local build, a test image - without going to
-  // Browse and coming back.
+  // Patterns and coming back.
   const other = document.createElement('option');
   other.value = FIRMWARE_OTHER;
   other.textContent = 'Other…';
@@ -968,6 +981,35 @@ $('save-file').addEventListener('click', async () => {
   status(`wrote ${target.name} (${bytes.length} bytes)`);
 });
 
+/* ---------- demo pattern ---------- */
+
+/** One pattern seeded into Files on startup, so Patterns opens on a working
+ *  chart - the detail view demonstrating itself - rather than an empty pane
+ *  asking for a file.
+ *
+ *  A four-on-the-floor 909 groove, written through edit.js exactly as clicks
+ *  would write it and encoded exactly as Save… would encode it, so the seed is
+ *  a real backup: everything downstream - the chart, editing, undo, Save…,
+ *  even Restore - treats it as one, because it is one. */
+function seedDemoPattern() {
+  const payload = new Uint8Array(protocol.PATTERN_BYTES);
+  edit.setLength(payload, 16);
+  edit.setScale(payload, 24); // 1/16
+  // [instrument, normal steps, accent steps] - BD, SD, CH, OH. The closed hat
+  // sits out the open hat's steps, the way a player would choke it.
+  const groove = [
+    [8, [4, 12], [0, 8]],
+    [9, [], [4, 12]],
+    [14, [1, 3, 5, 7, 9, 11, 13, 15], [0, 4, 8, 12]],
+    [15, [2, 6, 10, 14], []],
+  ];
+  for (const [instrument, normal, accent] of groove) {
+    for (const step of normal) edit.setStep(payload, instrument, step, 'normal');
+    for (const step of accent) edit.setStep(payload, instrument, step, 'accent');
+  }
+  addFile('Demo Pattern.syx', protocol.encode(protocol.NAVA_PTRN_DMP, 0, payload));
+}
+
 /* ---------- drop / pick ---------- */
 
 const dropzone = $('dropzone');
@@ -1003,7 +1045,7 @@ function fileDate(file) {
 
 /* ---------- what to dump ----------
  *
- * The same idea as the pattern chart on Browse: a grid you read the answer off
+ * The same idea as the pattern chart on Patterns: a grid you read the answer off
  * rather than a box you describe it in. Banks across the top, the sixteen
  * slots down the side, so a cell is where its label says it is - B7 is the
  * seventh row of the second column - and what is selected is visible without
@@ -1143,7 +1185,7 @@ function setAll(id, on, checkbox) {
  *
  * Restore can only send what is in the file, so a cell for a pattern the file
  * has nothing in is not a choice - it is disabled rather than hidden, the same
- * way the PATTERN buttons on Browse are, so the numbering never shifts and A5
+ * way the PATTERN buttons on Patterns are, so the numbering never shifts and A5
  * is in the same place whichever file is loaded. */
 function syncRestoreMatrix() {
   const file = fileByName($('restore-file').value);
@@ -1293,7 +1335,7 @@ async function loadDeployedFirmware() {
     // Nothing there, or nothing readable. Handled the same as absent.
   }
   if (!manifest) {
-    log('progress-log', 'no image deployed with this page — drop a .syx on Browse to flash one');
+    log('progress-log', 'no image deployed with this page — drop a .syx on Patterns to flash one');
     return;
   }
   try {
@@ -1328,7 +1370,7 @@ async function useBundled(manifest, repo) {
       log(
         'progress-log',
         `note: ${newest.tag} has been published since this page was built. ` +
-          'Download it from the releases page and drop it on Browse to flash it.',
+          'Download it from the releases page and drop it on Patterns to flash it.',
       );
     }
   } catch {
@@ -1377,7 +1419,7 @@ function showImageDetails() {
 /* Other… opens a file picker instead of naming an image.
  *
  * It is the way to reach a build that was never published - a local compile, a
- * test image - without going to Browse to drop it and coming back. Whichever
+ * test image - without going to Patterns to drop it and coming back. Whichever
  * image was chosen before is remembered, because Other… is not a selection:
  * cancelling the dialog has to leave the list on the image it was already on
  * rather than on a word that is not a file. */
@@ -1485,6 +1527,7 @@ refreshFiles();
 refreshBrowse();
 refreshUndoButtons();
 updateConnection();
+seedDemoPattern();
 // Last, and not awaited: it is one same-origin fetch that fills the Image
 // picker, and nothing above it should wait on the network to finish painting.
 loadDeployedFirmware();
