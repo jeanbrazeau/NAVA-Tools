@@ -1,6 +1,12 @@
-# nava-tools
+# NAVA Tools
 
-Back up, restore, edit and flash a NAVA over MIDI. The easiest way in is the web app at <https://jeanbrazeau.github.io/nava-tools/> — open it in a Chromium browser (Chrome, Edge, Brave, etc.; Safari and Firefox have no Web MIDI), allow MIDI access, and you can dump patterns off the unit, restore all or part of a backup, flash firmware to a unit in bootloader mode, and drop `.syx` files on the Browse tab to view and edit patterns before saving them back out. Everything runs in the tab — nothing gets uploaded anywhere.
+Tooling for use with the downtown-solutions firmware:
+<https://jeanbrazeau.github.io/NAVA-Tools/>
+[jeanbrazeau/Nava-Firmware](https://github.com/jeanbrazeau/Nava-Firmware)
+
+Web tool for flashing firmware, backing up, editing, and restoring patterns on an e-licktronic NAVA 909. Requires a Chromium browser (Helium, Arc, Chrome, Edge, Brave, etc.) — Safari and Firefox are unsupported.
+
+Allow MIDI access and you can dump patterns off the unit, restore all or part of a backup, flash firmware updates to a unit in bootloader mode, and drop `.syx` files on the Browse tab to view and edit patterns before saving them back out. Everything runs in the tab — nothing gets uploaded anywhere.
 
 The `nava` CLI does the same jobs from a terminal, plus one thing the browser can't: `nava build` compiles the firmware with PlatformIO against a checkout of [jeanbrazeau/Nava-Firmware](https://github.com/jeanbrazeau/Nava-Firmware). Install it with `uv tool install "git+https://github.com/jeanbrazeau/nava-tools"` and run `nava --help`; the commands are `ports`, `build`, `hex2syx`, `flash`, `backup`, `restore`, `inspect` and `show`. Ports are picked by name substring (`nava flash fw.syx --out NAVA-909`). To flash, put the unit in bootloader mode by holding steps 1, 3 and 5 while powering on; to back up or restore, stop the sequencer and go to the SysEx config page (SHIFT + TEMPO). `--patterns` takes things like `A1`, `A1-A16`, `C`, or `A1,B3,C`, and `--dry-run` on restore shows what would be written.
 
