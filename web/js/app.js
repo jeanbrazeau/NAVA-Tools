@@ -1060,6 +1060,38 @@ $('remove-file').addEventListener('click', async () => {
   status(`removed ${file.name}`);
 });
 
+/* ---------- new file ---------- */
+
+/** A pattern with nothing in it yet: sixteen steps of 1/16, the machine's own
+ *  starting point, so the chart opens at full width and a click on any cell
+ *  is the first note rather than a fight with a zero-length pattern. */
+function blankPattern() {
+  const payload = new Uint8Array(protocol.PATTERN_BYTES);
+  edit.setLength(payload, 16);
+  edit.setScale(payload, 24); // 1/16
+  return payload;
+}
+
+/** The first of `New Pattern.syx`, `New Pattern 2.syx`, ... not already in the
+ *  list. Numbered rather than replaced: the name is the key everything looks
+ *  a file up by, and a second New must not overwrite the first one's edits. */
+function freshName() {
+  const taken = new Set(state.files.map((f) => f.name));
+  for (let n = 1; ; n += 1) {
+    const name = n === 1 ? 'New Pattern.syx' : `New Pattern ${n}.syx`;
+    if (!taken.has(name)) return name;
+  }
+}
+
+// One blank pattern in slot A1, made the same way a dropped file arrives - so
+// it persists, selects, and edits like one. Slot A1 because Restore has to
+// put it somewhere, and the grid there lets it be moved before it is sent.
+$('new-file').addEventListener('click', () => {
+  const name = freshName();
+  addFile(name, protocol.encode(protocol.NAVA_PTRN_DMP, 0, blankPattern()));
+  status(`${name}: blank pattern in A1`);
+});
+
 /* ---------- demo pattern ---------- */
 
 /** One pattern seeded into Files whenever the browser has nothing of its own
@@ -1078,9 +1110,7 @@ $('remove-file').addEventListener('click', async () => {
  *  on it is then a no-op against a database that never had it, and it comes
  *  back on the next visit only if that visit also finds nothing stored. */
 function seedDemoPattern() {
-  const payload = new Uint8Array(protocol.PATTERN_BYTES);
-  edit.setLength(payload, 16);
-  edit.setScale(payload, 24); // 1/16
+  const payload = blankPattern();
   // [instrument, normal steps, accent steps] - BD, SD, CH, OH. The closed hat
   // sits out the open hat's steps, the way a player would choke it.
   const groove = [
